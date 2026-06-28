@@ -17,17 +17,24 @@ class LinkedInClient:
     TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken"
     PROFILE_URL = "https://api.linkedin.com/v2/me"
     UGC_POST_URL = "https://api.linkedin.com/v2/ugcPosts"
+    DEFAULT_SCOPE = "openid profile w_member_social"
 
     def __init__(
         self,
         client_id: Optional[str] = None,
         client_secret: Optional[str] = None,
         redirect_uri: Optional[str] = None,
+        storage_path: Optional[Path] = None,
     ) -> None:
         self.client_id = client_id or os.getenv("LINKEDIN_CLIENT_ID")
         self.client_secret = client_secret or os.getenv("LINKEDIN_CLIENT_SECRET")
         self.redirect_uri = redirect_uri or os.getenv("LINKEDIN_REDIRECT_URI")
-        self.storage_path = Path(os.getenv("SPARCE_TOKEN_STORE_PATH", Path(__file__).resolve().parents[1] / ".sparce_tokens.json"))
+        self.requested_scope: Optional[str] = None
+        if storage_path is None:
+            env_path = os.getenv("SPARCE_TOKEN_STORE_PATH")
+            self.storage_path = Path(env_path) if env_path else Path(__file__).resolve().parents[1] / ".sparce_tokens.json"
+        else:
+            self.storage_path = Path(storage_path)
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)
 
     def _read_tokens(self) -> Dict[str, Dict[str, str]]:
@@ -63,6 +70,10 @@ class LinkedInClient:
         tokens["linkedin"] = {"access_token": access_token}
         self._write_tokens(tokens)
 
+    def store_token(self, token: str) -> None:
+        """Persist the LinkedIn access token using the public token-store API."""
+        self.store_access_token(token)
+
     def load_access_token(self) -> Optional[str]:
         """Load the stored LinkedIn access token, if present."""
         tokens = self._read_tokens()
@@ -75,12 +86,14 @@ class LinkedInClient:
         tokens.pop("linkedin", None)
         self._write_tokens(tokens)
 
-    def build_authorization_url(self, scope: str = "openid profile w_member_social") -> str:
+    def build_authorization_url(self, scope: str = DEFAULT_SCOPE) -> str:
         """Return a LinkedIn authorization URL for OpenID and post permissions."""
         if not self.redirect_uri:
             raise LinkedInClientError("Redirect URI is required to build the authorization URL.")
         if not self.client_id:
             raise LinkedInClientError("LinkedIn client ID is required to build the authorization URL.")
+
+        self.requested_scope = scope
 
         return (
             f"{self.AUTH_URL}?response_type=code"
@@ -111,8 +124,8 @@ class LinkedInClient:
 
         try:
             data = response.json()
-        except ValueError:
-            raise LinkedInClientError("Unexpected non-JSON response from LinkedIn token endpoint.")
+        except ValueError as exc:
+            raise LinkedInClientError("Unexpected non-JSON response from LinkedIn token endpoint.") from exc
 
         token = data.get("access_token")
         if not token:
@@ -120,15 +133,16 @@ class LinkedInClient:
 
         return token
 
-    def get_authorized_profile(self, access_token: str) -> Dict[str, str]:
-        """Fetch the authenticated user's LinkedIn profile data."""
-        if not access_token:
+    def get_profile(self, access_token: Optional[str] = None) -> Dict[str, str]:
+        """Fetch the authenticated user's LinkedIn profile data via OpenID."""
+        token = access_token or self.load_access_token()
+        if not token:
             raise LinkedInClientError("Access token is required to fetch the LinkedIn profile.")
 
         response = requests.get(
             self.PROFILE_URL,
             headers={
-                "Authorization": f"Bearer {access_token}",
+                "Authorization": f"Bearer {token}",
                 "Accept": "application/json",
             },
             timeout=15,
@@ -146,21 +160,58 @@ class LinkedInClient:
             "lastName": payload.get("localizedLastName", ""),
         }
 
-    def create_ugc_post(self, access_token: str, author_urn: str, text: str) -> Dict[str, str]:
-        """Create a LinkedIn UGC post on behalf of the authorized member."""
-        if not access_token:
-            raise LinkedInClientError("Access token is required to create a LinkedIn post.")
-        if not author_urn:
-            raise LinkedInClientError("Author URN is required to create a LinkedIn post.")
-        if not text:
-            raise LinkedInClientError("Post text cannot be empty.")
+    def validate_scope(self) -> bool:
+        """Ensure the stored token includes the LinkedIn w_member_social scope."""
+        token = self.load_access_token()
+        if not token:
+            raise LinkedInClientError("Access token is required to validate scopes.")
 
+        response = requests.get(
+            self.PROFILE_URL,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/json",
+            },
+            timeout=15,
+        )
+
+        if response.status_code != 200:
+            raise LinkedInClientError(
+                f"Failed to validate LinkedIn scopes: {response.status_code} {response.text}"
+            )
+
+        scope_headers = []
+        scope_headers.append(response.headers.get("X-OAuth-Scopes", ""))
+        scope_headers.append(response.headers.get("X-RestLi-Protocol-Version", ""))
+        combined_scopes = ",".join(scope_headers)
+        if "w_member_social" in combined_scopes:
+            return True
+
+        if self.requested_scope:
+            return "w_member_social" in self.requested_scope.split()
+
+        return False
+
+    def post_to_profile(self, summary_text: str, github_repo_url: str, access_token: Optional[str] = None) -> Dict[str, str]:
+        """Create a LinkedIn post that references the GitHub repository URL."""
+        token = access_token or self.load_access_token()
+        if not token:
+            raise LinkedInClientError("Access token is required to create a LinkedIn post.")
+        if not summary_text:
+            raise LinkedInClientError("Post text cannot be empty.")
+        if not github_repo_url:
+            raise LinkedInClientError("GitHub repository URL is required for a LinkedIn post.")
+
+        profile = self.get_profile(token)
+        author_urn = f"urn:li:person:{profile['id']}"
         body = {
             "author": author_urn,
             "lifecycleState": "PUBLISHED",
             "specificContent": {
                 "com.linkedin.ugc.ShareContent": {
-                    "shareCommentary": {"text": text},
+                    "shareCommentary": {
+                        "text": f"{summary_text}\n\nSource: {github_repo_url}"
+                    },
                     "shareMediaCategory": "NONE",
                 }
             },
@@ -171,7 +222,7 @@ class LinkedInClient:
             self.UGC_POST_URL,
             json=body,
             headers={
-                "Authorization": f"Bearer {access_token}",
+                "Authorization": f"Bearer {token}",
                 "Content-Type": "application/json",
                 "X-Restli-Protocol-Version": "2.0.0",
             },
