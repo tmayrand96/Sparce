@@ -1,9 +1,22 @@
-import argparse
+import os
 import sys
+import argparse
 from pathlib import Path
-from backend.ocr_engine import OCREngine
-from backend.text_parser import clean_and_structure
-from backend.summarizer import generate_summary
+from dotenv import load_dotenv
+
+# Hardcoded absolute path execution to bypass all environment lookup errors
+ABSOLUTE_ENV_PATH = "/workspaces/Sparce/.env"
+
+if os.path.exists(ABSOLUTE_ENV_PATH):
+    load_dotenv(dotenv_path=ABSOLUTE_ENV_PATH)
+    print(f"DEBUG: API Key injected from {ABSOLUTE_ENV_PATH}? {'Yes' if os.getenv('GOOGLE_API_KEY') else 'No'}")
+else:
+    print(f"DEBUG: Critical Error - System could not find file at: {ABSOLUTE_ENV_PATH}")
+
+# Core architectural imports (guaranteed to receive the environment variables now)
+from backend.core.ocr_engine import OCREngine
+from backend.core.text_parser import clean_and_structure
+from backend.core.summarizer import generate_summary
 
 def main():
     parser = argparse.ArgumentParser(description="Sparce: Mobile Document Summarizer CLI")
