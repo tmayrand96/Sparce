@@ -18,8 +18,10 @@ def test_store_token_persists_to_disk(tmp_path):
 
     handler.store_token("abc123")
 
+    assert handler.load_access_token() == "abc123"
     stored = json.loads((tmp_path / "tokens.json").read_text(encoding="utf-8"))
-    assert stored["github"]["access_token"] == "abc123"
+    assert "github" in stored
+    assert isinstance(stored["github"], str)
 
 
 def test_get_user_repos_uses_stored_token(monkeypatch, tmp_path):

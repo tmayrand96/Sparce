@@ -19,8 +19,10 @@ def test_store_token_persists_to_disk(tmp_path):
 
     client.store_token("abc123")
 
+    assert client.load_access_token() == "abc123"
     stored = json.loads((tmp_path / "tokens.json").read_text(encoding="utf-8"))
-    assert stored["linkedin"]["access_token"] == "abc123"
+    assert "linkedin" in stored
+    assert isinstance(stored["linkedin"], str)
 
 
 def test_get_profile_uses_stored_token(monkeypatch, tmp_path):
