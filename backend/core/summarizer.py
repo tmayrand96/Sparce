@@ -17,7 +17,7 @@ class SummarizerError(Exception):
 class GoogleGeminiSummarizer:
     """Handles text summarization using Google Gemini API."""
     
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.0-flash"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-3.1-flash-lite"):
         """
         Initialize the Gemini summarizer.
         
@@ -171,7 +171,7 @@ def generate_summary(cleaned_text: str) -> str:
         # --- PRE-FLIGHT TOKEN COUNT ---
         if hasattr(summarizer, 'client'):
             token_check = summarizer.client.models.count_tokens(
-                model="gemini-2.0-flash",
+                model=summarizer.model_name,
                 contents=cleaned_text
             )
             print(f"DEBUG [Pre-flight]: Input payload size is {token_check.total_tokens} tokens.")
