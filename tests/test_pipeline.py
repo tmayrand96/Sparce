@@ -1,9 +1,25 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from backend.core.pipeline import ProcessingPipeline, ProcessingPipelineError
+from backend.core.pipeline import Pipeline, ProcessingPipeline, ProcessingPipelineError
 
 
 class TestProcessingPipeline:
+    def test_pipeline_execute_orchestrates_components(self):
+        mock_ocr = MagicMock()
+        mock_ocr.extract_text.return_value = "ocr text"
+        mock_parser = MagicMock(return_value="parsed text")
+        mock_summarizer = MagicMock(return_value="summary")
+        mock_connector = MagicMock(return_value={"status": "posted"})
+
+        pipeline = Pipeline(mock_ocr, mock_parser, mock_summarizer, mock_connector)
+        result = pipeline.execute("/tmp/doc.png")
+
+        assert result == {"status": "posted"}
+        mock_ocr.extract_text.assert_called_once_with("/tmp/doc.png")
+        mock_parser.assert_called_once_with("ocr text")
+        mock_summarizer.assert_called_once_with("parsed text")
+        mock_connector.assert_called_once_with("summary")
+
     @patch("backend.core.pipeline.OCREngine")
     @patch("backend.core.pipeline.clean_and_structure")
     @patch("backend.core.pipeline.generate_summary")

@@ -36,42 +36,15 @@ class GitHubOAuthHandler:
         else:
             self.storage_path = Path(storage_path)
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)
-
-    def _read_tokens(self) -> Dict[str, Dict[str, str]]:
-        if not self.storage_path.exists():
-            return {}
-
-        try:
-            with self.storage_path.open("r", encoding="utf-8") as handle:
-                data = json.load(handle)
-        except (json.JSONDecodeError, OSError):
-            return {}
-
-        if not isinstance(data, dict):
-            return {}
-
-        return data
-
-    def _write_tokens(self, tokens: Dict[str, Dict[str, str]]) -> None:
-        with self.storage_path.open("w", encoding="utf-8") as handle:
-            json.dump(tokens, handle, indent=2)
-
-        try:
-            os.chmod(self.storage_path, 0o600)
-        except OSError:
-            pass
+        self.token_store = TokenStorage(storage_path=self.storage_path)
 
     def load_access_token(self) -> Optional[str]:
         """Load the stored GitHub access token, if present."""
-        tokens = self._read_tokens()
-        provider_tokens = tokens.get("github", {})
-        return provider_tokens.get("access_token")
+        return self.token_store.load_token("github")
 
     def clear_access_token(self) -> None:
         """Remove the persisted GitHub token."""
-        tokens = self._read_tokens()
-        tokens.pop("github", None)
-        self._write_tokens(tokens)
+        self.token_store.clear_token("github")
 
     def build_authorization_url(self, scope: str = "repo,user") -> str:
         """Return a GitHub user authorization URL."""
@@ -117,13 +90,11 @@ class GitHubOAuthHandler:
         return token
 
     def store_token(self, token: str) -> None:
-        """Persist an access token securely to a local JSON storage file."""
+        """Persist an access token securely to encrypted storage."""
         if not token:
             raise GitHubOAuthError("Access token is required for storage.")
 
-        tokens = self._read_tokens()
-        tokens["github"] = {"access_token": token}
-        self._write_tokens(tokens)
+        self.token_store.save_token("github", token)
 
     def store_access_token(self, access_token: str) -> None:
         """Backward-compatible alias for storing a GitHub access token."""

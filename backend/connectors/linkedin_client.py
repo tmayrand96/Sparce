@@ -4,6 +4,8 @@ import requests
 from pathlib import Path
 from typing import Dict, Optional
 
+from .storage import TokenStorage
+
 
 class LinkedInClientError(Exception):
     """Custom exception for LinkedIn connector failures."""
@@ -36,39 +38,14 @@ class LinkedInClient:
         else:
             self.storage_path = Path(storage_path)
         self.storage_path.parent.mkdir(parents=True, exist_ok=True)
-
-    def _read_tokens(self) -> Dict[str, Dict[str, str]]:
-        if not self.storage_path.exists():
-            return {}
-
-        try:
-            with self.storage_path.open("r", encoding="utf-8") as handle:
-                data = json.load(handle)
-        except (json.JSONDecodeError, OSError):
-            return {}
-
-        if not isinstance(data, dict):
-            return {}
-
-        return data
-
-    def _write_tokens(self, tokens: Dict[str, Dict[str, str]]) -> None:
-        with self.storage_path.open("w", encoding="utf-8") as handle:
-            json.dump(tokens, handle, indent=2)
-
-        try:
-            os.chmod(self.storage_path, 0o600)
-        except OSError:
-            pass
+        self.token_store = TokenStorage(storage_path=self.storage_path)
 
     def store_access_token(self, access_token: str) -> None:
-        """Persist the LinkedIn access token securely to a local JSON storage file."""
+        """Persist the LinkedIn access token securely using encrypted storage."""
         if not access_token:
             raise LinkedInClientError("Access token is required for storage.")
 
-        tokens = self._read_tokens()
-        tokens["linkedin"] = {"access_token": access_token}
-        self._write_tokens(tokens)
+        self.token_store.save_token("linkedin", access_token)
 
     def store_token(self, token: str) -> None:
         """Persist the LinkedIn access token using the public token-store API."""
@@ -76,15 +53,11 @@ class LinkedInClient:
 
     def load_access_token(self) -> Optional[str]:
         """Load the stored LinkedIn access token, if present."""
-        tokens = self._read_tokens()
-        provider_tokens = tokens.get("linkedin", {})
-        return provider_tokens.get("access_token")
+        return self.token_store.load_token("linkedin")
 
     def clear_access_token(self) -> None:
         """Remove the persisted LinkedIn token."""
-        tokens = self._read_tokens()
-        tokens.pop("linkedin", None)
-        self._write_tokens(tokens)
+        self.token_store.clear_token("linkedin")
 
     def build_authorization_url(self, scope: str = DEFAULT_SCOPE) -> str:
         """Return a LinkedIn authorization URL for OpenID and post permissions."""
