@@ -8,6 +8,23 @@ from .text_parser import TextParsingError, clean_and_structure
 from backend.connectors.linkedin_client import LinkedInClient, LinkedInClientError
 
 
+class Pipeline:
+    """Simple orchestration interface for OCR, parsing, summarization, and posting."""
+
+    def __init__(self, ocr_engine, parser, summarizer, connector):
+        self.ocr = ocr_engine
+        self.parser = parser
+        self.summarizer = summarizer
+        self.connector = connector
+
+    def execute(self, image_path):
+        """Run the full pipeline for a single document image."""
+        ocr_result = self.ocr.extract_text(image_path)
+        parsed_text = self.parser(ocr_result)
+        summary = self.summarizer(parsed_text)
+        return self.connector(summary)
+
+
 class ProcessingPipelineError(Exception):
     """Generic exception raised when the processing pipeline fails."""
     pass
