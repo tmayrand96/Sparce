@@ -32,7 +32,10 @@ class EnvTokenProvider(BaseTokenProvider):
 
     def get_token(self) -> Optional[str]:
         values = self._load_values()
-        return values.get(self.env_name)
+        token = values.get(self.env_name)
+        if not token:
+            raise ValueError(f"Missing required token: {self.env_name}")
+        return token
 
     def _load_values(self) -> dict[str, str]:
         values: dict[str, str] = {}

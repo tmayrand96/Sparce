@@ -1,12 +1,10 @@
-import os
 import time
 from typing import Optional
+
 import google.genai as genai
 from google.genai import errors
-from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+from backend.token_provider import BaseTokenProvider, EnvTokenProvider
 
 
 class SummarizerError(Exception):
@@ -16,23 +14,32 @@ class SummarizerError(Exception):
 
 class GoogleGeminiSummarizer:
     """Handles text summarization using Google Gemini API."""
-    
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-3.1-flash-lite"):
+
+    def __init__(
+        self,
+        provider: Optional[BaseTokenProvider] = None,
+        api_key: Optional[str] = None,
+        model: str = "gemini-3.1-flash-lite",
+    ):
         """
         Initialize the Gemini summarizer.
-        
+
         Args:
-            api_key: Google API key. If None, uses GOOGLE_API_KEY env var.
+            provider: Token provider used to resolve the API key.
+            api_key: Google API key. If provided, it overrides the provider.
             model: Gemini model to use.
         """
-        self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
-        
-        if not self.api_key:
+        self.provider = provider or EnvTokenProvider()
+
+        try:
+            resolved_api_key = api_key or self.provider.get_token()
+        except ValueError as exc:
             raise SummarizerError(
                 "GOOGLE_API_KEY environment variable not set. "
                 "Please set your Google API key to use the summarizer."
-            )
-        
+            ) from exc
+
+        self.api_key = resolved_api_key
         self.model_name = model
         self.client = genai.Client(api_key=self.api_key)
     
@@ -144,15 +151,15 @@ Summary:"""
 _summarizer = None
 
 
-def _get_summarizer() -> GoogleGeminiSummarizer:
+def _get_summarizer(provider: Optional[BaseTokenProvider] = None) -> GoogleGeminiSummarizer:
     """Get or initialize the global summarizer instance."""
     global _summarizer
     if _summarizer is None:
-        _summarizer = GoogleGeminiSummarizer()
+        _summarizer = GoogleGeminiSummarizer(provider=provider)
     return _summarizer
 
 
-def generate_summary(cleaned_text: str) -> str:
+def generate_summary(cleaned_text: str, provider: Optional[BaseTokenProvider] = None) -> str:
     """
     Orchestrates LLM API call to return the finalized document summary.
     
@@ -166,7 +173,7 @@ def generate_summary(cleaned_text: str) -> str:
         SummarizerError: If summarization fails.
     """
     try:
-        summarizer = _get_summarizer()
+        summarizer = _get_summarizer(provider=provider)
         
         # --- PRE-FLIGHT TOKEN COUNT ---
         if hasattr(summarizer, 'client'):
@@ -174,9 +181,12 @@ def generate_summary(cleaned_text: str) -> str:
                 model=summarizer.model_name,
                 contents=cleaned_text
             )
-            print(f"DEBUG [Pre-flight]: Input payload size is {token_check.total_tokens} tokens.")
-            
-            if token_check.total_tokens > 1000000:
+            total_tokens = getattr(token_check, "total_tokens", None)
+            if not isinstance(total_tokens, int):
+                total_tokens = 0
+            print(f"DEBUG [Pre-flight]: Input payload size is {total_tokens} tokens.")
+
+            if total_tokens > 1000000:
                 print("WARNING: This payload risks hitting your Per-Minute Token Quota!")
         # ----------------------------------------
 

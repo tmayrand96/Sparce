@@ -1,8 +1,10 @@
-import os
 from pathlib import Path
-from typing import Union, Dict, Any
+from typing import Optional, Union, Dict, Any
+
 from PIL import Image, UnidentifiedImageError
 import pytesseract
+
+from backend.token_provider import BaseTokenProvider, EnvTokenProvider
 
 class OCREngineError(Exception):
     """Custom exception class for OCR Engine pipeline failures."""
@@ -10,10 +12,9 @@ class OCREngineError(Exception):
 
 class OCREngine:
     """Handles image validation and local text extraction via Tesseract OCR."""
-    
-    def __init__(self) -> None:
-        # We initialize the class with a safe fallback mapping for configurations if needed later
-        pass
+
+    def __init__(self, provider: Optional[BaseTokenProvider] = None) -> None:
+        self.provider = provider or EnvTokenProvider()
 
     def validate_image(self, image_path: Union[str, Path]) -> Path:
         """

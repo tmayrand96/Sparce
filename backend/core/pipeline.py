@@ -6,6 +6,7 @@ from .ocr_engine import OCREngine, OCREngineError
 from .summarizer import SummarizerError, generate_summary
 from .text_parser import TextParsingError, clean_and_structure
 from backend.connectors.linkedin_client import LinkedInClient, LinkedInClientError
+from backend.token_provider import BaseTokenProvider, EnvTokenProvider
 
 
 class Pipeline:
@@ -33,9 +34,14 @@ class ProcessingPipelineError(Exception):
 class ProcessingPipeline:
     """End-to-end document processing pipeline for OCR, cleaning, summarization, and LinkedIn posting."""
 
-    def __init__(self, linkedin_client: Optional[LinkedInClient] = None) -> None:
+    def __init__(
+        self,
+        linkedin_client: Optional[LinkedInClient] = None,
+        provider: Optional[BaseTokenProvider] = None,
+    ) -> None:
         self.logger = logging.getLogger(__name__)
-        self.ocr_engine = OCREngine()
+        self.provider = provider or EnvTokenProvider()
+        self.ocr_engine = OCREngine(provider=self.provider)
         self.linkedin_client = linkedin_client or LinkedInClient()
 
     def process_document(self, image_path: Union[str, Path]) -> str:

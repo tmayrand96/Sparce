@@ -1,20 +1,10 @@
-import os
 import sys
 import argparse
 from pathlib import Path
-from dotenv import load_dotenv
-
-# Hardcoded absolute path execution to bypass all environment lookup errors
-ABSOLUTE_ENV_PATH = "/workspaces/Sparce/.env"
-
-if os.path.exists(ABSOLUTE_ENV_PATH):
-    load_dotenv(dotenv_path=ABSOLUTE_ENV_PATH)
-    print(f"DEBUG: API Key injected from {ABSOLUTE_ENV_PATH}? {'Yes' if os.getenv('GOOGLE_API_KEY') else 'No'}")
-else:
-    print(f"DEBUG: Critical Error - System could not find file at: {ABSOLUTE_ENV_PATH}")
 
 from backend.core.pipeline import ProcessingPipeline
 from backend.connectors.linkedin_client import LinkedInClient
+from backend.token_provider import EnvTokenProvider
 
 def main():
     parser = argparse.ArgumentParser(description="Sparce: Mobile Document Summarizer CLI")
@@ -34,8 +24,10 @@ def main():
         sys.exit(1)
 
     try:
+        token_provider = EnvTokenProvider()
         pipeline = ProcessingPipeline(
-            linkedin_client=LinkedInClient() if args.post else None
+            linkedin_client=LinkedInClient() if args.post else None,
+            provider=token_provider,
         )
         summary = pipeline.process_document(image_path)
 
