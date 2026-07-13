@@ -3,4 +3,5 @@ __pycache__/
 *.pyc
 .env
 data/
-backend/connectors/tokens.json
+backend/connectors/tokens.json.sparce_tokens.key
+backend/.sparce_tokens.key

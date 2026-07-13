@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import Mock, patch, MagicMock
-from backend.summarizer import (
+from backend.core.summarizer import (
     GoogleGeminiSummarizer,
     generate_summary,
     SummarizerError,

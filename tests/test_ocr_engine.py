@@ -1,6 +1,6 @@
 import pytest
 from pathlib import Path
-from backend.ocr_engine import OCREngine, OCREngineError
+from backend.core.ocr_engine import OCREngine, OCREngineError
 
 def test_validate_image_missing_file():
     """Verify that a non-existent file path safely triggers an OCREngineError."""

@@ -5,6 +5,8 @@ import requests
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .storage import TokenStorage
+
 
 class GitHubOAuthError(Exception):
     """Custom exception for GitHub OAuth connector failures."""
