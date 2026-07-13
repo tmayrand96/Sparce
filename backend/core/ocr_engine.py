@@ -4,7 +4,11 @@ from typing import Optional, Union, Dict, Any
 from PIL import Image, UnidentifiedImageError
 import pytesseract
 
+from backend.processor_utils import convert_to_images
 from backend.token_provider import BaseTokenProvider, EnvTokenProvider
+from backend.utils.environment_check import EnvironmentDependencyError, verify_system_dependencies
+
+verify_system_dependencies(["pdftoppm"])
 
 class OCREngineError(Exception):
     """Custom exception class for OCR Engine pipeline failures."""
@@ -51,40 +55,66 @@ class OCREngine:
 
     def extract_text(self, image_path: Union[str, Path]) -> Dict[str, Any]:
         """
-        Executes local OCR processing to extract text content from the target image.
-        
+        Executes local OCR processing to extract text content from the target image or PDF.
+
         Args:
-            image_path: Path to the image file.
-            
+            image_path: Path to the image file or PDF document.
+
         Returns:
-            A structured payload containing the raw 'text' string and metadata status flags.
+            A structured payload containing OCR results for each page/image.
         """
         try:
-            # First, filter the input path through our validation barrier
-            clean_path = self.validate_image(image_path)
-            
-            # Execute physical pixel evaluation and text extraction
-            # We open the image cleanly within a context manager
+            target_path = Path(image_path)
+            if not target_path.exists():
+                raise OCREngineError(f"Target image path does not exist: {target_path}")
+            if not target_path.is_file():
+                raise OCREngineError(f"Target path is a directory, expected a file: {target_path}")
+
+            if target_path.suffix.lower() == ".pdf":
+                page_images = convert_to_images(str(target_path))
+                results = []
+                for page_index, page_image in enumerate(page_images):
+                    raw_text = pytesseract.image_to_string(page_image).strip()
+                    results.append({
+                        "page_index": page_index,
+                        "raw_text": raw_text,
+                    })
+
+                aggregated_text = "\n\n".join(result["raw_text"] for result in results if result["raw_text"])
+                return {
+                    "status": "success",
+                    "source_type": "pdf",
+                    "page_count": len(results),
+                    "results": results,
+                    "raw_text": aggregated_text,
+                    "file_name": target_path.name,
+                }
+
+            clean_path = self.validate_image(target_path)
             with Image.open(clean_path) as img:
-                raw_text = pytesseract.image_to_string(img)
-                
+                raw_text = pytesseract.image_to_string(img).strip()
+
             return {
                 "status": "success",
-                "raw_text": raw_text.strip(),
-                "file_name": clean_path.name
+                "source_type": "image",
+                "page_count": 1,
+                "results": [{
+                    "page_index": 0,
+                    "raw_text": raw_text,
+                }],
+                "raw_text": raw_text,
+                "file_name": clean_path.name,
             }
-            
+
         except OCREngineError as ocr_err:
-            # Capture our predictable structural barriers
             return {
                 "status": "error",
                 "error_type": "ValidationFailure",
-                "message": str(ocr_err)
+                "message": str(ocr_err),
             }
         except Exception as system_err:
-            # Capture unexpected system dependencies (e.g., Tesseract binary disconnected)
             return {
                 "status": "error",
                 "error_type": "SystemFailure",
-                "message": f"Underlying OCR subsystem failed: {str(system_err)}"
+                "message": f"Underlying OCR subsystem failed: {str(system_err)}",
             }

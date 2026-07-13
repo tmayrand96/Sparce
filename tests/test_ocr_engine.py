@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pytest
 from pathlib import Path
 from backend.core.ocr_engine import OCREngine, OCREngineError
@@ -37,3 +39,30 @@ def test_validate_image_corrupt_file(tmp_path):
     assert result["status"] == "error"
     assert result["error_type"] == "ValidationFailure"
     assert "Unsupported or invalid image format" in result["message"]
+
+
+def test_extract_text_from_pdf_converts_each_page(tmp_path):
+    pdf_path = tmp_path / "sample.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4")
+
+    fake_page_images = [
+        object(),
+        object(),
+    ]
+
+    with patch("backend.core.ocr_engine.convert_to_images", return_value=fake_page_images) as mock_convert, patch(
+        "backend.core.ocr_engine.pytesseract.image_to_string",
+        side_effect=["page one", "page two"],
+    ) as mock_tesseract:
+        engine = OCREngine()
+        result = engine.extract_text(pdf_path)
+
+    assert result["status"] == "success"
+    assert result["source_type"] == "pdf"
+    assert result["page_count"] == 2
+    assert result["results"] == [
+        {"page_index": 0, "raw_text": "page one"},
+        {"page_index": 1, "raw_text": "page two"},
+    ]
+    mock_convert.assert_called_once_with(str(pdf_path))
+    assert mock_tesseract.call_count == 2
