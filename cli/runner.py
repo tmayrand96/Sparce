@@ -2,6 +2,10 @@ import sys
 import argparse
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from backend.core.pipeline import ProcessingPipeline
 from backend.connectors.linkedin_client import LinkedInClient
 from backend.token_provider import EnvTokenProvider
