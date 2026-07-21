@@ -6,9 +6,20 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from backend.core.base_document_parser import DefaultDocumentParser
+from backend.core.pdf_parser import PDFDocumentParser
 from backend.core.pipeline import ProcessingPipeline
 from backend.connectors.linkedin_client import LinkedInClient
 from backend.token_provider import EnvTokenProvider
+
+
+def build_parser_for_path(document_path: str | Path):
+    path = Path(document_path)
+    suffix = path.suffix.lower()
+    if suffix == ".pdf":
+        return PDFDocumentParser()
+    return DefaultDocumentParser()
+
 
 def main():
     parser = argparse.ArgumentParser(description="Sparce: Mobile Document Summarizer CLI")
@@ -29,11 +40,14 @@ def main():
 
     try:
         token_provider = EnvTokenProvider()
+        parser = build_parser_for_path(image_path)
         pipeline = ProcessingPipeline(
             linkedin_client=LinkedInClient() if args.post else None,
             provider=token_provider,
         )
         summary = pipeline.process_document(image_path)
+        if parser and parser.parse(image_path).get("status") == "success":
+            print(f"Parsed document with {parser.__class__.__name__}")
 
         print("\n--- Document Summary ---")
         print(summary)
