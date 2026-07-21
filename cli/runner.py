@@ -1,33 +1,68 @@
-import argparse
 import sys
+import argparse
 from pathlib import Path
-from backend.ocr_engine import OCREngine
-from backend.text_parser import clean_and_structure
-from backend.summarizer import generate_summary
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from backend.core.base_document_parser import DefaultDocumentParser
+from backend.core.pdf_parser import PDFDocumentParser
+from backend.core.pipeline import ProcessingPipeline
+from backend.connectors.linkedin_client import LinkedInClient
+from backend.token_provider import EnvTokenProvider
+
+
+def build_parser_for_path(document_path: str | Path):
+    path = Path(document_path)
+    suffix = path.suffix.lower()
+    if suffix == ".pdf":
+        return PDFDocumentParser()
+    return DefaultDocumentParser()
+
 
 def main():
     parser = argparse.ArgumentParser(description="Sparce: Mobile Document Summarizer CLI")
     parser.add_argument("--image", type=str, required=True, help="Path to the mobile camera image capture")
+    parser.add_argument("--repo", type=str, help="GitHub repository URL to link the summary to")
+    parser.add_argument("--post", action="store_true", help="Automatically post the output to LinkedIn")
     args = parser.parse_args()
 
     image_path = Path(args.image)
-    
-    # Execution Pipeline
-    # Instantiate OCREngine and extract text
-    ocr_engine = OCREngine()
-    ocr_result = ocr_engine.extract_text(image_path)
-    
-    # Check if OCR extraction was successful
-    if ocr_result["status"] != "success":
-        print(f"Error: {ocr_result.get('message', 'Unknown OCR error')}", file=sys.stderr)
+
+    if not image_path.exists():
+        print(f"Error: Image file does not exist: {image_path}", file=sys.stderr)
         sys.exit(1)
-    
-    raw_text = ocr_result["raw_text"]
-    cleaned_text = clean_and_structure(raw_text)
-    summary = generate_summary(cleaned_text)
-    
-    print("\n--- Document Summary ---")
-    print(summary)
+
+    if args.post and not args.repo:
+        print("Error: The --post flag requires --repo to provide a GitHub repository URL.", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        token_provider = EnvTokenProvider()
+        parser = build_parser_for_path(image_path)
+        pipeline = ProcessingPipeline(
+            linkedin_client=LinkedInClient() if args.post else None,
+            provider=token_provider,
+        )
+        summary = pipeline.process_document(image_path)
+        if parser and parser.parse(image_path).get("status") == "success":
+            print(f"Parsed document with {parser.__class__.__name__}")
+
+        print("\n--- Document Summary ---")
+        print(summary)
+
+        if args.repo and not args.post:
+            print(f"\nGitHub repository context: {args.repo}")
+
+        if args.post:
+            post_result = pipeline.post_to_linkedin(summary, args.repo)
+            print("\n--- LinkedIn Post Result ---")
+            print(post_result)
+
+    except Exception as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

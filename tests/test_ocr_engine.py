@@ -1,6 +1,8 @@
+from unittest.mock import patch
+
 import pytest
 from pathlib import Path
-from backend.ocr_engine import OCREngine, OCREngineError
+from backend.core.ocr_engine import OCREngine, OCREngineError
 
 def test_validate_image_missing_file():
     """Verify that a non-existent file path safely triggers an OCREngineError."""
@@ -37,3 +39,24 @@ def test_validate_image_corrupt_file(tmp_path):
     assert result["status"] == "error"
     assert result["error_type"] == "ValidationFailure"
     assert "Unsupported or invalid image format" in result["message"]
+
+
+def test_extract_text_from_pdf_uses_pdf_parser(tmp_path):
+    pdf_path = tmp_path / "sample.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4")
+
+    expected_result = {
+        "status": "success",
+        "source_type": "pdf",
+        "raw_text": "Hello from PDF",
+        "page_count": 1,
+        "results": [{"page_index": 0, "raw_text": "Hello from PDF"}],
+        "file_name": pdf_path.name,
+    }
+
+    with patch("backend.core.ocr_engine.PDFDocumentParser.parse", return_value=expected_result) as mock_parse:
+        engine = OCREngine()
+        result = engine.extract_text(pdf_path)
+
+    assert result == expected_result
+    mock_parse.assert_called_once_with(pdf_path)

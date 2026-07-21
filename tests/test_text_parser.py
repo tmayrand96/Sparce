@@ -1,5 +1,5 @@
 import pytest
-from backend.text_parser import (
+from backend.core.text_parser import (
     clean_text,
     tokenize_sentences,
     chunk_text,

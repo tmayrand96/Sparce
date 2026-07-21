@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import Mock, patch, MagicMock
-from backend.summarizer import (
+from backend.core.summarizer import (
     GoogleGeminiSummarizer,
     generate_summary,
     SummarizerError,
@@ -10,6 +10,20 @@ from backend.summarizer import (
 class TestGoogleGeminiSummarizer:
     """Tests for the GoogleGeminiSummarizer class."""
     
+    def test_init_with_injected_provider(self):
+        class DummyProvider:
+            def get_token(self):
+                return "provider-token"
+
+        with patch("google.genai.Client") as mock_client_class:
+            mock_client = MagicMock()
+            mock_client_class.return_value = mock_client
+
+            summarizer = GoogleGeminiSummarizer(provider=DummyProvider())
+
+            assert summarizer.api_key == "provider-token"
+            mock_client_class.assert_called_once_with(api_key="provider-token")
+
     @patch.dict("os.environ", {"GOOGLE_API_KEY": "test_api_key"})
     @patch("google.genai.Client")
     def test_init_with_env_key(self, mock_client_class):
@@ -197,7 +211,7 @@ class TestSummarizerIntegration:
     """Integration tests for the summarizer."""
     
     @patch.dict("os.environ", {"GOOGLE_API_KEY": "test_key"})
-    @patch("backend.summarizer._summarizer", None)
+    @patch("backend.core.summarizer._summarizer", None)
     @patch("google.genai.Client")
     def test_full_summarization_pipeline(self, mock_client_class):
         """Test full summarization pipeline with realistic text."""
