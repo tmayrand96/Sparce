@@ -7,6 +7,7 @@ import pytesseract
 from backend.processor_utils import convert_to_images
 from backend.token_provider import BaseTokenProvider, EnvTokenProvider
 from backend.utils.environment_check import EnvironmentDependencyError, verify_system_dependencies
+from .pdf_parser import PDFDocumentParser
 
 verify_system_dependencies(["pdftoppm"])
 
@@ -71,23 +72,25 @@ class OCREngine:
                 raise OCREngineError(f"Target path is a directory, expected a file: {target_path}")
 
             if target_path.suffix.lower() == ".pdf":
-                page_images = convert_to_images(str(target_path))
-                results = []
-                for page_index, page_image in enumerate(page_images):
-                    raw_text = pytesseract.image_to_string(page_image).strip()
-                    results.append({
-                        "page_index": page_index,
+                parser = PDFDocumentParser()
+                parsed_result = parser.parse(target_path)
+                if parsed_result.get("status") == "success":
+                    raw_text = parsed_result.get("raw_text", "")
+                    return {
+                        "status": "success",
+                        "source_type": "pdf",
+                        "page_count": parsed_result.get("page_count", 1),
+                        "results": [{
+                            "page_index": 0,
+                            "raw_text": raw_text,
+                        }],
                         "raw_text": raw_text,
-                    })
-
-                aggregated_text = "\n\n".join(result["raw_text"] for result in results if result["raw_text"])
+                        "file_name": target_path.name,
+                    }
                 return {
-                    "status": "success",
-                    "source_type": "pdf",
-                    "page_count": len(results),
-                    "results": results,
-                    "raw_text": aggregated_text,
-                    "file_name": target_path.name,
+                    "status": "error",
+                    "error_type": "ValidationFailure",
+                    "message": parsed_result.get("message", "Unable to parse PDF content"),
                 }
 
             clean_path = self.validate_image(target_path)
