@@ -1,3 +1,10 @@
+import sys
+from pathlib import Path
+
+# Add project root directory to Python's import path
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+
+from backend.core.pipeline import process_document as run_pipeline
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Optional, Tuple

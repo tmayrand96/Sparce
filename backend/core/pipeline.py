@@ -9,6 +9,12 @@ from backend.connectors.linkedin_client import LinkedInClient, LinkedInClientErr
 from backend.token_provider import BaseTokenProvider, EnvTokenProvider
 
 
+def process_document(image_path: Union[str, Path]) -> str:
+    """Compatibility wrapper for the document processing pipeline."""
+    pipeline = ProcessingPipeline()
+    return pipeline.process_document(image_path)
+
+
 class Pipeline:
     """Simple orchestration interface for OCR, parsing, summarization, and posting."""
 
