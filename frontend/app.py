@@ -50,50 +50,74 @@ def _render_custom_css() -> None:
         """
         <style>
         .stApp {
-            background: linear-gradient(135deg, #f8fbff 0%, #f4f7ff 100%);
+            background: #2E3440;
+            color: #ECEFF4;
+        }
+        header, .main, .block-container {
+            background: #2E3440;
+            color: #ECEFF4;
         }
         .block-container {
             padding-top: 2rem;
             padding-bottom: 3rem;
-            max-width: 860px;
+            max-width: 960px;
+        }
+        html, body, div, span, p, h1, h2, h3, h4, h5, h6, label, .stMarkdown, .stTextInput, .stSelectbox {
+            color: #ECEFF4 !important;
         }
         .hero-card {
-            border: 1px solid rgba(24, 61, 134, 0.12);
+            border: 1px solid #4C566A;
             border-radius: 20px;
             padding: 1.25rem 1.4rem;
-            background: rgba(255, 255, 255, 0.84);
-            box-shadow: 0 8px 32px rgba(15, 30, 62, 0.06);
+            background: #3B4252;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
             backdrop-filter: blur(10px);
+            margin-bottom: 1rem;
         }
         .pill {
             display: inline-block;
             padding: 0.35rem 0.75rem;
             border-radius: 999px;
-            background: #eef5ff;
-            color: #23427a;
+            background: #4C566A;
+            color: #ECEFF4;
             font-weight: 600;
             margin-top: 0.35rem;
+            border: 1px solid #88C0D0;
         }
         div[data-testid="stButton"] > button {
             width: 100%;
             border-radius: 999px;
-            border: none;
-            background: linear-gradient(90deg, #2457ff 0%, #5a89ff 100%);
-            color: white;
-            font-weight: 600;
+            border: 1px solid #88C0D0;
+            background: #88C0D0;
+            color: #2E3440;
+            font-weight: 700;
             padding: 0.7rem 1rem;
         }
         div[data-testid="stButton"] > button:hover {
-            opacity: 0.95;
+            background: #81A1C1;
+            border-color: #81A1C1;
+            color: #2E3440;
             transform: translateY(-1px);
         }
         .summary-card {
-            border-left: 4px solid #2457ff;
+            border: 1px solid #4C566A;
+            border-left: 4px solid #88C0D0;
             padding: 1rem 1.1rem;
             border-radius: 16px;
-            background: white;
-            box-shadow: 0 8px 24px rgba(15, 30, 62, 0.06);
+            background: #3B4252;
+            color: #ECEFF4;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
             white-space: pre-wrap;
+        }
+        [data-testid="stFileUploader"], [data-testid="stDownloadButton"], .stDownloadButton > button {
+            background: #3B4252 !important;
+            border: 1px solid #4C566A !important;
+            color: #ECEFF4 !important;
+        }
+        .stAlert {
+            background: #3B4252 !important;
+            border: 1px solid #4C566A !important;
+            color: #ECEFF4 !important;
         }
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
@@ -107,17 +131,19 @@ def main() -> None:
     if st is None:
         raise RuntimeError("streamlit must be installed to run the UI")
 
-    st.set_page_config(page_title="Sparce AI", page_icon="✍️", layout="centered")
+    st.set_page_config(page_title="Sparce AI", page_icon="🚀", layout="wide")
     _render_custom_css()
 
     logo_path = _get_logo_path()
 
     st.markdown("<div class='hero-card'>", unsafe_allow_html=True)
-    if logo_path is not None:
-        st.image(str(logo_path), width=280)
-    else:
-        st.title("Sparce AI")
-    st.caption("Handwritten Notes & Document Intelligence")
+    logo_col_1, logo_col_2, logo_col_3 = st.columns([1, 2, 1])
+    with logo_col_2:
+        if logo_path is not None:
+            st.image(str(logo_path), width=280)
+        else:
+            st.title("Sparce AI")
+        st.caption("Handwritten Notes & Document Intelligence")
     st.markdown("</div>", unsafe_allow_html=True)
 
     st.write("")
