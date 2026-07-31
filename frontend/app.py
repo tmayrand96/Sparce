@@ -52,29 +52,66 @@ def _render_custom_css() -> None:
     st.markdown(
         """
         <style>
-        .stApp {
-            background: #FFFFFF;
-            color: #111827;
+        .stApp, .st-emotion-cache-1wmy9hl, .st-emotion-cache-1y4p8pa, .st-emotion-cache-1r6slb0 {
+            background: #FFFFFF !important;
         }
-        header, .main, .block-container {
-            background: #FFFFFF;
-            color: #111827;
+        [data-testid="stSidebar"] {
+            background: #FFFFFF !important;
         }
         .block-container {
             padding-top: 2rem;
             padding-bottom: 3rem;
             max-width: 960px;
         }
-        html, body, div, span, p, h1, h2, h3, h4, h5, h6, label, .stMarkdown, .stTextInput, .stSelectbox {
-            color: #111827 !important;
+        .stMarkdown, .stMarkdown p, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4, .stMarkdown h5, .stMarkdown h6,
+        .stTextInput > div > div > input,
+        .stTextArea > div > div > textarea,
+        .stNumberInput > div > div > input,
+        .stSelectbox > div > div,
+        .stCheckbox > label,
+        .stRadio > label,
+        .stButton button,
+        [data-testid="stFileUploader"],
+        [data-testid="stDownloadButton"],
+        .stDownloadButton > button,
+        .stAlert,
+        .stAlert p,
+        .stAlert label,
+        .stCaption,
+        .stDataFrame,
+        .stDataFrame td,
+        .stDataFrame th {
+            color: #000000 !important;
+        }
+        .stTextInput > div > div > input,
+        .stTextArea > div > div > textarea,
+        .stNumberInput > div > div > input,
+        .stSelectbox > div > div,
+        .stButton button,
+        [data-testid="stFileUploader"],
+        [data-testid="stDownloadButton"],
+        .stDownloadButton > button,
+        .stAlert {
+            background: #FFFFFF !important;
+            border: 1px solid #000000 !important;
+        }
+        .stButton button:hover,
+        .stButton button:focus,
+        .stTextInput > div > div > input:focus,
+        .stTextArea > div > div > textarea:focus,
+        .stNumberInput > div > div > input:focus,
+        .stSelectbox > div > div:focus,
+        [data-testid="stFileUploader"]:focus-within,
+        .stDownloadButton > button:focus {
+            background: #FFFFFF !important;
+            border-color: #000000 !important;
+            box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.2) !important;
         }
         .hero-card {
-            border: 1px solid #E5E7EB;
+            border: 1px solid #000000;
             border-radius: 20px;
             padding: 1.25rem 1.4rem;
             background: #FFFFFF;
-            box-shadow: 0 8px 32px rgba(15, 23, 42, 0.06);
-            backdrop-filter: blur(10px);
             margin-bottom: 1rem;
         }
         .pill {
@@ -82,45 +119,24 @@ def _render_custom_css() -> None:
             padding: 0.35rem 0.75rem;
             border-radius: 999px;
             background: #FFFFFF;
-            color: #111827;
+            color: #000000;
             font-weight: 600;
             margin-top: 0.35rem;
-            border: 1px solid #4B5563;
-        }
-        div[data-testid="stButton"] > button {
-            width: 100%;
-            border-radius: 999px;
-            border: 1px solid #4B5563;
-            background: #FFFFFF;
-            color: #111827;
-            font-weight: 700;
-            padding: 0.7rem 1rem;
-        }
-        div[data-testid="stButton"] > button:hover {
-            background: #F9FAFB;
-            border-color: #4B5563;
-            color: #111827;
-            transform: translateY(-1px);
+            border: 1px solid #000000;
         }
         .summary-card {
-            border: 1px solid #E5E7EB;
-            border-left: 4px solid #2563EB;
+            border: 1px solid #000000;
+            border-left: 4px solid #000000;
             padding: 1rem 1.1rem;
             border-radius: 16px;
             background: #FFFFFF;
-            color: #111827;
-            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+            color: #000000;
             white-space: pre-wrap;
         }
-        [data-testid="stFileUploader"], [data-testid="stDownloadButton"], .stDownloadButton > button {
-            background: #FFFFFF !important;
-            border: 1px solid #D1D5DB !important;
-            color: #111827 !important;
-        }
-        .stAlert {
-            background: #FFFFFF !important;
-            border: 1px solid #4B5563 !important;
-            color: #111827 !important;
+        img, svg, .logo-container, [data-testid="stImage"] {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
         }
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
