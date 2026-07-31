@@ -139,7 +139,6 @@ def main() -> None:
 
     logo_path = _get_logo_path()
 
-    st.markdown("<div class='hero-card'>", unsafe_allow_html=True)
     logo_col_1, logo_col_2, logo_col_3 = st.columns([1, 2, 1])
     with logo_col_2:
         if logo_path is not None:
@@ -147,7 +146,6 @@ def main() -> None:
         else:
             st.title("Sparce AI")
         st.caption("Handwritten Notes & Document Intelligence")
-    st.markdown("</div>", unsafe_allow_html=True)
 
     st.write("Upload a handwritten note, scan, or PDF and turn it into a clean summary.")
 
