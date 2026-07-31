@@ -81,25 +81,25 @@ def _render_custom_css() -> None:
             display: inline-block;
             padding: 0.35rem 0.75rem;
             border-radius: 999px;
-            background: #F3F4F6;
+            background: #FFFFFF;
             color: #111827;
             font-weight: 600;
             margin-top: 0.35rem;
-            border: 1px solid #D1D5DB;
+            border: 1px solid #4B5563;
         }
         div[data-testid="stButton"] > button {
             width: 100%;
             border-radius: 999px;
-            border: 1px solid #2563EB;
-            background: #2563EB;
-            color: #FFFFFF;
+            border: 1px solid #4B5563;
+            background: #FFFFFF;
+            color: #111827;
             font-weight: 700;
             padding: 0.7rem 1rem;
         }
         div[data-testid="stButton"] > button:hover {
-            background: #1D4ED8;
-            border-color: #1D4ED8;
-            color: #FFFFFF;
+            background: #F9FAFB;
+            border-color: #4B5563;
+            color: #111827;
             transform: translateY(-1px);
         }
         .summary-card {
@@ -118,8 +118,8 @@ def _render_custom_css() -> None:
             color: #111827 !important;
         }
         .stAlert {
-            background: #F9FAFB !important;
-            border: 1px solid #E5E7EB !important;
+            background: #FFFFFF !important;
+            border: 1px solid #4B5563 !important;
             color: #111827 !important;
         }
         #MainMenu {visibility: hidden;}
