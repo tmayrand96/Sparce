@@ -70,7 +70,14 @@ class ProcessingPipeline:
                 self.logger.error("OCR failed for %s: %s", image_path, message)
                 raise ProcessingPipelineError(f"OCR failed: {message}")
 
-            raw_text = ocr_result.get("raw_text", "")
+            raw_text = str(ocr_result.get("raw_text", "") or "").strip()
+            if not raw_text:
+                page_results = ocr_result.get("results", [])
+                raw_text = "\n\n".join(
+                    str(page.get("raw_text", "") or "").strip()
+                    for page in page_results
+                ).strip()
+
             if not raw_text:
                 self.logger.error("OCR returned no text for %s", image_path)
                 raise ProcessingPipelineError("OCR did not return any text to summarize.")
@@ -79,11 +86,14 @@ class ProcessingPipeline:
             cleaned_text = clean_and_structure(raw_text)
 
             self.logger.debug("Generating summary for cleaned text from image: %s", image_path)
-            summary = generate_summary(
-                cleaned_text,
-                user_prompt=user_prompt,
-                max_output_tokens=max_output_tokens,
-            )
+            if user_prompt is None and max_output_tokens is None:
+                summary = generate_summary(cleaned_text)
+            else:
+                summary = generate_summary(
+                    cleaned_text,
+                    user_prompt=user_prompt,
+                    max_output_tokens=max_output_tokens,
+                )
 
             self.logger.info("Document processing completed successfully for image: %s", image_path)
             return summary
