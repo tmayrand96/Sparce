@@ -43,27 +43,34 @@ class GoogleGeminiSummarizer:
         self.model_name = model
         self.client = genai.Client(api_key=self.api_key)
     
-    def _build_prompt(self, text: str) -> str:
+    def _build_prompt(self, text: str, user_prompt: Optional[str] = None) -> str:
         """
         Build an optimized prompt for document summarization.
         
         Args:
             text: The text to summarize.
+            user_prompt: Optional user-specified question or instruction.
             
         Returns:
             Formatted prompt string.
         """
-        prompt = f"""You are a professional document summarizer. 
-Analyze the following document and provide a concise, well-structured summary.
+        instruction = "Analyze the following document and provide a concise, well-structured summary."
+        if user_prompt and user_prompt.strip():
+            instruction = (
+                f"Analyze the following document and answer the user's request: {user_prompt.strip()}"
+            )
+
+        prompt = f"""You are a professional document summarizer.
+{instruction}
 
 Guidelines:
 - Capture the main points and key information
 - Maintain clarity and accuracy
-- Keep the summary to 2-4 paragraphs
-- Use bullet points for lists of items
+- Keep the response concise, ideally under 1000 characters
+- Use bullet points for lists of items when helpful
 - Preserve important numbers, dates, and names
 - Write in a professional tone
-- CRITICAL: Provide the final summary in the same language the document is written in (e.g., if the text is in French, respond in French).
+- CRITICAL: Provide the final response in the same language the document is written in (e.g., if the text is in French, respond in French).
 
 Document:
 {text}
@@ -71,7 +78,7 @@ Document:
 Summary:"""
         return prompt
     
-    def summarize(self, text: str, max_output_tokens: Optional[int] = None) -> str:
+    def summarize(self, text: str, max_output_tokens: Optional[int] = None, user_prompt: Optional[str] = None) -> str:
         """
         Summarize the given text using Gemini API with automatic rate-limit throttling.
         
@@ -96,11 +103,12 @@ Summary:"""
         
         for attempt in range(max_retries):
             try:
-                prompt = self._build_prompt(text)
+                prompt = self._build_prompt(text, user_prompt=user_prompt)
                 
                 # Configure generation settings
+                max_output = max_output_tokens or 300
                 generation_config = {
-                    "max_output_tokens": max_output_tokens or 1024,
+                    "max_output_tokens": max_output,
                     "temperature": 0.7,
                     "top_p": 0.95,
                 }
@@ -159,7 +167,12 @@ def _get_summarizer(provider: Optional[BaseTokenProvider] = None) -> GoogleGemin
     return _summarizer
 
 
-def generate_summary(cleaned_text: str, provider: Optional[BaseTokenProvider] = None) -> str:
+def generate_summary(
+    cleaned_text: str,
+    provider: Optional[BaseTokenProvider] = None,
+    user_prompt: Optional[str] = None,
+    max_output_tokens: Optional[int] = None,
+) -> str:
     """
     Orchestrates LLM API call to return the finalized document summary.
     
@@ -190,7 +203,11 @@ def generate_summary(cleaned_text: str, provider: Optional[BaseTokenProvider] = 
                 print("WARNING: This payload risks hitting your Per-Minute Token Quota!")
         # ----------------------------------------
 
-        return summarizer.summarize(cleaned_text)
+        return summarizer.summarize(
+            cleaned_text,
+            max_output_tokens=max_output_tokens,
+            user_prompt=user_prompt,
+        )
         
     except SummarizerError as e:
         raise SummarizerError(f"Summarization failed: {str(e)}")

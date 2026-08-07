@@ -169,6 +169,23 @@ class TestGoogleGeminiSummarizer:
         # Verify that generate_content was called
         mock_client.models.generate_content.assert_called_once()
 
+    @patch.dict("os.environ", {"GOOGLE_API_KEY": "test_key"})
+    @patch("google.genai.Client")
+    def test_build_prompt_with_user_question(self, mock_client_class):
+        """Test that a custom question is injected into the prompt instructions."""
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        summarizer = GoogleGeminiSummarizer()
+        prompt = summarizer._build_prompt(
+            "This is test text.",
+            user_prompt="What is the main takeaway?",
+        )
+
+        assert "What is the main takeaway?" in prompt
+        assert "1000 characters" in prompt
+        assert "Document:" in prompt
+
 
 class TestGenerateSummary:
     """Tests for the generate_summary function."""

@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Optional, Union, Dict, Any
 
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 import pytesseract
 
 from backend.processor_utils import convert_to_images
@@ -95,7 +95,8 @@ class OCREngine:
 
             clean_path = self.validate_image(target_path)
             with Image.open(clean_path) as img:
-                raw_text = pytesseract.image_to_string(img).strip()
+                corrected_image = ImageOps.exif_transpose(img)
+                raw_text = pytesseract.image_to_string(corrected_image).strip()
 
             return {
                 "status": "success",
