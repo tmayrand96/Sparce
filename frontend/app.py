@@ -1,4 +1,5 @@
 import sys
+from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 
@@ -6,7 +7,6 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from backend.core.pipeline import process_document as run_pipeline
-from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Optional, Tuple
 
@@ -16,8 +16,6 @@ try:
     import streamlit as st
 except ImportError:  # pragma: no cover - defensive fallback for test environments
     st = None
-
-from backend.core.pipeline import process_document as run_pipeline
 
 
 def detect_document_format(uploaded_file) -> Tuple[str, str]:
@@ -197,6 +195,8 @@ def main() -> None:
             placeholder="e.g. What are the key takeaways?",
         )
 
+    challenge_mode = st.checkbox("⚡ Challenge me", value=False, key="challenge_mode_toggle")
+
     if st.button("Generate Summary", type="primary", use_container_width=True, disabled=uploaded_file is None):
         if uploaded_file is None:
             st.warning("Please upload a document before generating a summary.")
@@ -212,17 +212,40 @@ def main() -> None:
                         temp_path,
                         user_prompt=custom_question if use_custom_prompt else None,
                         max_output_tokens=300,
+                        challenge_mode=challenge_mode,
                     )
                 st.session_state["summary"] = summary
+                st.session_state["challenge_mode"] = challenge_mode
+                st.session_state.pop("summary_error", None)
+                original_name = Path(getattr(uploaded_file, "name", "sparce_summary")).stem
+                st.session_state["summary_file_name"] = (
+                    f"{original_name}_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+                )
             except Exception as exc:  # pragma: no cover - UI-level fallback
-                st.session_state["summary"] = f"Processing failed: {exc}"
+                st.session_state["summary_error"] = f"Processing failed: {exc}"
             finally:
                 Path(temp_path).unlink(missing_ok=True)
 
-    if "summary" in st.session_state and st.session_state["summary"]:
+    if "summary_error" in st.session_state and st.session_state["summary_error"]:
+        st.error(st.session_state["summary_error"])
+
+    if "summary" in st.session_state and st.session_state["summary"] and not st.session_state.get("summary_error"):
+        if st.session_state.get("challenge_mode"):
+            st.markdown("### Summary & Critical Analysis")
+        else:
+            st.markdown("### Summary")
+
         st.markdown(
             f"<div class='summary-card'>{st.session_state['summary'].replace(chr(10), '<br>')}</div>",
             unsafe_allow_html=True,
+        )
+
+        st.download_button(
+            "📥 Download Summary (.md)",
+            data=st.session_state["summary"],
+            file_name=st.session_state.get("summary_file_name", "sparce_summary.md"),
+            mime="text/markdown",
+            key="download_summary",
         )
 
 

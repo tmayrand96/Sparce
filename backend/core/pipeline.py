@@ -13,10 +13,18 @@ def process_document(
     image_path: Union[str, Path],
     user_prompt: Optional[str] = None,
     max_output_tokens: Optional[int] = None,
+    challenge_mode: bool = False,
+    system_instruction: Optional[str] = None,
 ) -> str:
     """Compatibility wrapper for the document processing pipeline."""
     pipeline = ProcessingPipeline()
-    return pipeline.process_document(image_path, user_prompt=user_prompt, max_output_tokens=max_output_tokens)
+    return pipeline.process_document(
+        image_path,
+        user_prompt=user_prompt,
+        max_output_tokens=max_output_tokens,
+        challenge_mode=challenge_mode,
+        system_instruction=system_instruction,
+    )
 
 
 class Pipeline:
@@ -59,6 +67,8 @@ class ProcessingPipeline:
         image_path: Union[str, Path],
         user_prompt: Optional[str] = None,
         max_output_tokens: Optional[int] = None,
+        challenge_mode: bool = False,
+        system_instruction: Optional[str] = None,
     ) -> str:
         """Process a document image and return the generated summary."""
         self.logger.info("Starting document processing for image: %s", image_path)
@@ -70,7 +80,14 @@ class ProcessingPipeline:
                 self.logger.error("OCR failed for %s: %s", image_path, message)
                 raise ProcessingPipelineError(f"OCR failed: {message}")
 
-            raw_text = ocr_result.get("raw_text", "")
+            raw_text = str(ocr_result.get("raw_text", "") or "").strip()
+            if not raw_text:
+                page_results = ocr_result.get("results", [])
+                raw_text = "\n\n".join(
+                    str(page.get("raw_text", "") or "").strip()
+                    for page in page_results
+                ).strip()
+
             if not raw_text:
                 self.logger.error("OCR returned no text for %s", image_path)
                 raise ProcessingPipelineError("OCR did not return any text to summarize.")
@@ -83,6 +100,8 @@ class ProcessingPipeline:
                 cleaned_text,
                 user_prompt=user_prompt,
                 max_output_tokens=max_output_tokens,
+                challenge_mode=challenge_mode,
+                system_instruction=system_instruction,
             )
 
             self.logger.info("Document processing completed successfully for image: %s", image_path)

@@ -44,7 +44,13 @@ class TestProcessingPipeline:
 
         assert summary == "Generated summary."
         mock_clean_and_structure.assert_called_once_with("Extracted OCR text.")
-        mock_generate_summary.assert_called_once_with("Cleaned OCR text.")
+        mock_generate_summary.assert_called_once_with(
+            "Cleaned OCR text.",
+            user_prompt=None,
+            max_output_tokens=None,
+            challenge_mode=False,
+            system_instruction=None,
+        )
 
     @patch("backend.core.pipeline.OCREngine")
     def test_process_document_ocr_failure(self, mock_ocr_engine_class):
