@@ -43,21 +43,39 @@ class GoogleGeminiSummarizer:
         self.model_name = model
         self.client = genai.Client(api_key=self.api_key)
     
-    def _build_prompt(self, text: str, user_prompt: Optional[str] = None) -> str:
+    def _build_prompt(
+        self,
+        text: str,
+        user_prompt: Optional[str] = None,
+        challenge_mode: bool = False,
+        system_instruction: Optional[str] = None,
+    ) -> str:
         """
         Build an optimized prompt for document summarization.
         
         Args:
             text: The text to summarize.
             user_prompt: Optional user-specified question or instruction.
+            challenge_mode: If enabled, injects a critical thinking modifier.
+            system_instruction: Optional override for the final prompt instruction.
             
         Returns:
             Formatted prompt string.
         """
-        instruction = "Analyze the following document and provide a concise, well-structured summary."
-        if user_prompt and user_prompt.strip():
+        if system_instruction and system_instruction.strip():
+            instruction = system_instruction.strip()
+        elif user_prompt and user_prompt.strip():
             instruction = (
                 f"Analyze the following document and answer the user's request: {user_prompt.strip()}"
+            )
+        else:
+            instruction = "Analyze the following document and provide a concise, well-structured summary."
+
+        if challenge_mode:
+            instruction += (
+                " In addition to synthesizing this document, act as a rigorous thought partner. "
+                "Explicitly challenge the core assumptions, logical leaps, potential blind spots, and underlying premises presented in the text. "
+                "Provide constructive counter-arguments and pose 2-3 deep, probing questions to test the thesis."
             )
 
         prompt = f"""You are a professional document summarizer.
@@ -78,13 +96,23 @@ Document:
 Summary:"""
         return prompt
     
-    def summarize(self, text: str, max_output_tokens: Optional[int] = None, user_prompt: Optional[str] = None) -> str:
+    def summarize(
+        self,
+        text: str,
+        max_output_tokens: Optional[int] = None,
+        user_prompt: Optional[str] = None,
+        challenge_mode: bool = False,
+        system_instruction: Optional[str] = None,
+    ) -> str:
         """
         Summarize the given text using Gemini API with automatic rate-limit throttling.
         
         Args:
             text: The text to summarize.
             max_output_tokens: Maximum tokens for the response (default: 1024).
+            user_prompt: Optional user-specified question or instruction.
+            challenge_mode: If enabled, apply critical analysis prompt injection.
+            system_instruction: Optional override for the top-level prompt.
             
         Returns:
             Summary text.
@@ -103,7 +131,12 @@ Summary:"""
         
         for attempt in range(max_retries):
             try:
-                prompt = self._build_prompt(text, user_prompt=user_prompt)
+                prompt = self._build_prompt(
+                    text,
+                    user_prompt=user_prompt,
+                    challenge_mode=challenge_mode,
+                    system_instruction=system_instruction,
+                )
                 
                 # Configure generation settings
                 max_output = max_output_tokens or 300
@@ -172,6 +205,8 @@ def generate_summary(
     provider: Optional[BaseTokenProvider] = None,
     user_prompt: Optional[str] = None,
     max_output_tokens: Optional[int] = None,
+    challenge_mode: bool = False,
+    system_instruction: Optional[str] = None,
 ) -> str:
     """
     Orchestrates LLM API call to return the finalized document summary.
@@ -207,6 +242,8 @@ def generate_summary(
             cleaned_text,
             max_output_tokens=max_output_tokens,
             user_prompt=user_prompt,
+            challenge_mode=challenge_mode,
+            system_instruction=system_instruction,
         )
         
     except SummarizerError as e:

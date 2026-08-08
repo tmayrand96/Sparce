@@ -171,6 +171,28 @@ class TestGoogleGeminiSummarizer:
 
     @patch.dict("os.environ", {"GOOGLE_API_KEY": "test_key"})
     @patch("google.genai.Client")
+    def test_summarize_challenge_mode_injects_prompt(self, mock_client_class):
+        """Test that challenge mode adds critical analysis instructions."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.text = "Critical summary."
+        mock_client.models.generate_content.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        summarizer = GoogleGeminiSummarizer()
+        result = summarizer.summarize(
+            "This is a long document with important information.",
+            challenge_mode=True,
+        )
+
+        assert result == "Critical summary."
+        assert mock_client.models.generate_content.call_count == 1
+        called_kwargs = mock_client.models.generate_content.call_args.kwargs
+        assert "contents" in called_kwargs
+        assert "act as a rigorous thought partner" in called_kwargs["contents"]
+
+    @patch.dict("os.environ", {"GOOGLE_API_KEY": "test_key"})
+    @patch("google.genai.Client")
     def test_build_prompt_with_user_question(self, mock_client_class):
         """Test that a custom question is injected into the prompt instructions."""
         mock_client = MagicMock()
