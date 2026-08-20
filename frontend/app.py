@@ -7,6 +7,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from backend.core.pipeline import process_document as run_pipeline
+from backend.core.workforce_pipeline import SHIFT_OPTIONS, convert_workforce_pdf
 from tempfile import NamedTemporaryFile
 from typing import Optional, Tuple
 
@@ -168,6 +169,7 @@ def main() -> None:
         type=["png", "jpg", "jpeg", "pdf"],
         help="Drag and drop or browse device (Accepted formats: PNG, JPEG, PDF)",
     )
+    selected_shift = st.selectbox("Quart de travail", SHIFT_OPTIONS)
 
     if uploaded_file is not None:
         file_type, label = detect_document_format(uploaded_file)
@@ -186,6 +188,28 @@ def main() -> None:
                 "<div class='hero-card'><strong>📄 PDF document ready for processing.</strong><br>Preview and summary generation will begin once you trigger the pipeline.</div>",
                 unsafe_allow_html=True,
             )
+
+            if st.button("Générer le rapport Excel", type="primary", use_container_width=True):
+                suffix = Path(getattr(uploaded_file, "name", "rapport.pdf")).suffix.lower() or ".pdf"
+                with NamedTemporaryFile("wb", suffix=suffix, delete=False) as temp_file:
+                    temp_file.write(uploaded_file.getvalue())
+                    temp_path = temp_file.name
+                try:
+                    with st.spinner("Conversion du rapport en Excel..."):
+                        workbook = convert_workforce_pdf(temp_path, selected_shift)
+                    original_name = Path(getattr(uploaded_file, "name", "rapport")).stem
+                    st.download_button(
+                        "Télécharger le rapport Excel",
+                        data=workbook.getvalue(),
+                        file_name=f"{original_name}_{selected_shift.lower()}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="download_workforce_xlsx",
+                    )
+                    st.success("Rapport Excel généré.")
+                except Exception as exc:  # pragma: no cover - UI-level fallback
+                    st.error(f"Conversion échouée: {exc}")
+                finally:
+                    Path(temp_path).unlink(missing_ok=True)
 
     use_custom_prompt = st.checkbox("Enable Prompt", value=False)
     custom_question = ""
