@@ -192,8 +192,14 @@ def main() -> None:
         else:
             suffix = Path(getattr(uploaded_file, "name", "rapport.pdf")).suffix.lower() or ".pdf"
             with NamedTemporaryFile("wb", suffix=suffix, delete=False) as temp_file:
+                uploaded_file.seek(0)
                 temp_file.write(uploaded_file.getvalue())
                 temp_path = temp_file.name
+
+            st.caption(
+                f"PDF size: {Path(temp_path).stat().st_size / 1024:.2f} KB. "
+                "Native text extraction and OCR fallback enabled."
+            )
 
             try:
                 with st.spinner("Converting PDF to Excel..."):
