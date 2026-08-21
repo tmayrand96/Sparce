@@ -161,8 +161,9 @@ def main() -> None:
     st.write("Upload a workforce report PDF and convert it into a formatted Excel file.")
 
     uploaded_file = st.file_uploader(
-        "",
+        label="Upload PDF document",
         type=["pdf"],
+        label_visibility="collapsed",
         help="Drag and drop or browse device (Accepted format: PDF)",
     )
     if uploaded_file is not None:
