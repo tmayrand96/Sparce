@@ -165,6 +165,18 @@ def main() -> None:
         type=["pdf"],
         help="Drag and drop or browse device (Accepted format: PDF)",
     )
+    if uploaded_file is not None:
+        upload_signature = (
+            getattr(uploaded_file, "file_id", None),
+            getattr(uploaded_file, "name", None),
+            getattr(uploaded_file, "size", None),
+        )
+        if st.session_state.get("upload_signature") != upload_signature:
+            st.session_state["upload_signature"] = upload_signature
+            st.session_state["excel_bytes"] = None
+            st.session_state["conversion_done"] = False
+            st.session_state.pop("workforce_xlsx_warnings", None)
+            st.session_state.pop("workforce_xlsx_error", None)
     selected_shift = st.selectbox("Quart de travail", SHIFT_OPTIONS)
 
     if uploaded_file is not None:
@@ -204,13 +216,14 @@ def main() -> None:
             try:
                 with st.spinner("Converting PDF to Excel..."):
                     conversion_warnings: list[str] = []
-                    workbook = convert_workforce_pdf(temp_path, selected_shift, conversion_warnings)
-                original_name = Path(getattr(uploaded_file, "name", "report")).stem
-                st.session_state["workforce_xlsx"] = workbook.getvalue()
-                st.session_state["workforce_xlsx_file_name"] = f"{original_name}_{selected_shift.lower()}.xlsx"
+                    output_buffer = convert_workforce_pdf(temp_path, selected_shift, conversion_warnings)
+                st.session_state["excel_bytes"] = output_buffer.getvalue()
+                st.session_state["conversion_done"] = True
                 st.session_state["workforce_xlsx_warnings"] = conversion_warnings
                 st.session_state.pop("workforce_xlsx_error", None)
             except Exception as exc:  # pragma: no cover - UI-level fallback
+                st.session_state["excel_bytes"] = None
+                st.session_state["conversion_done"] = False
                 st.session_state["workforce_xlsx_error"] = f"Conversion failed: {exc}"
             finally:
                 Path(temp_path).unlink(missing_ok=True)
@@ -221,11 +234,11 @@ def main() -> None:
         with st.expander("Anomalies détectées"):
             for warning in st.session_state["workforce_xlsx_warnings"]:
                 st.warning(warning)
-    if st.session_state.get("workforce_xlsx"):
+    if st.session_state.get("conversion_done"):
         st.download_button(
-            "Download Excel File",
-            data=st.session_state["workforce_xlsx"],
-            file_name=st.session_state.get("workforce_xlsx_file_name", "output_effectifs.xlsx"),
+            "Download XLSX Report",
+            data=st.session_state["excel_bytes"],
+            file_name="Rapport_Effectifs.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key="download_workforce_xlsx",
         )
