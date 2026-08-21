@@ -203,10 +203,13 @@ def main() -> None:
 
             try:
                 with st.spinner("Converting PDF to Excel..."):
-                    workbook = convert_workforce_pdf(temp_path, selected_shift)
+                    conversion_warnings: list[str] = []
+                    workbook = convert_workforce_pdf(temp_path, selected_shift, conversion_warnings)
                 original_name = Path(getattr(uploaded_file, "name", "report")).stem
                 st.session_state["workforce_xlsx"] = workbook.getvalue()
                 st.session_state["workforce_xlsx_file_name"] = f"{original_name}_{selected_shift.lower()}.xlsx"
+                st.session_state["workforce_xlsx_warnings"] = conversion_warnings
+                st.session_state.pop("workforce_xlsx_error", None)
             except Exception as exc:  # pragma: no cover - UI-level fallback
                 st.session_state["workforce_xlsx_error"] = f"Conversion failed: {exc}"
             finally:
@@ -214,6 +217,10 @@ def main() -> None:
 
     if st.session_state.get("workforce_xlsx_error"):
         st.error(st.session_state["workforce_xlsx_error"])
+    if st.session_state.get("workforce_xlsx_warnings"):
+        with st.expander("Anomalies détectées"):
+            for warning in st.session_state["workforce_xlsx_warnings"]:
+                st.warning(warning)
     if st.session_state.get("workforce_xlsx"):
         st.download_button(
             "Download Excel File",

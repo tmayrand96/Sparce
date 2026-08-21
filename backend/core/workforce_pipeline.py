@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from io import BytesIO
 from pathlib import Path
@@ -20,6 +21,7 @@ VALID_CODES = (
     "ETS", "ETN", "BRAN", "ACUR", "HSCM",
 )
 OVERTIME_CODES = {"TS1.5", "TSS", "TSN", "TSTD"}
+LOGGER = logging.getLogger(__name__)
 
 DEPARTMENT_PATTERNS = (
     ("HF Unité de Médecine - 4e étage", "4e"),
@@ -76,7 +78,9 @@ def _error(report_date: str, shift: str, category: str, employment_code: str, de
     )
 
 
-def parse_workforce_text(text: str, shift: str) -> list[dict[str, Any]]:
+def parse_workforce_text(
+    text: str, shift: str, warnings: list[str] | None = None
+) -> list[dict[str, Any]]:
     """Parse report text into validated department/category records."""
     if shift not in SHIFT_OPTIONS:
         raise ValueError(f"Quart invalide: {shift}")
@@ -107,7 +111,14 @@ def parse_workforce_text(text: str, shift: str) -> list[dict[str, Any]]:
             target = int(ratio_match.group(1))
             stated_presence = int(ratio_match.group(2))
             if stated_presence != presence:
-                raise _error(report_date, shift, category, category, f"Présences incohérentes: ratio={stated_presence}, codes={presence}")
+                warning = (
+                    f"Écart détecté [{report_date} | {shift} | {current_department} | {category}] : "
+                    f"Présences indiquées = {stated_presence}, Codes comptés = {presence}. "
+                    f"La valeur {presence} a été retenue pour le fichier Excel."
+                )
+                LOGGER.warning(warning)
+                if warnings is not None:
+                    warnings.append(warning)
         elif category == "AA" or current_department == "ACUR/GDL":
             target = presence
         else:
@@ -171,13 +182,15 @@ def build_workforce_workbook(records: list[dict[str, Any]], shift: str) -> Bytes
     return output
 
 
-def convert_workforce_pdf(pdf_path: str | Path, shift: str) -> BytesIO:
+def convert_workforce_pdf(
+    pdf_path: str | Path, shift: str, warnings: list[str] | None = None
+) -> BytesIO:
     """Extract a PDF report and return its formatted XLSX representation."""
     try:
         parsed = PDFDocumentParser().parse(pdf_path)
         if parsed.get("status") != "success":
             raise WorkforceReportError(parsed.get("message", "Extraction PDF impossible"))
-        records = parse_workforce_text(parsed["raw_text"], shift)
+        records = parse_workforce_text(parsed["raw_text"], shift, warnings)
         return build_workforce_workbook(records, shift)
     except WorkforceReportError:
         raise

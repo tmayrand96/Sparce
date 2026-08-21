@@ -1,9 +1,7 @@
 from io import BytesIO
-
-import pytest
 from openpyxl import load_workbook
 
-from backend.core.workforce_pipeline import WorkforceReportError, build_workforce_workbook, parse_workforce_text
+from backend.core.workforce_pipeline import build_workforce_workbook, parse_workforce_text
 
 
 REPORT_TEXT = """Le vendredi 4 sept. 2026
@@ -38,8 +36,18 @@ def test_workbook_contains_shift_date_and_formatted_rows():
     assert sheet.freeze_panes == "A5"
 
 
-def test_ratio_mismatch_has_operational_error_context():
+def test_ratio_mismatch_uses_counted_codes_and_reports_warning():
     text = "Le vendredi 4 sept. 2026\nHF Urgence\nInfirmière 2/1 URG N"
 
-    with pytest.raises(WorkforceReportError, match=r"Date: .*Quart: Nuit.*Catégorie d'emploi: Inf.*Code d'emploi: Inf"):
-        parse_workforce_text(text, "Nuit")
+    warnings = []
+    records = parse_workforce_text(text, "Nuit", warnings)
+    workbook = build_workforce_workbook(records, "Nuit")
+    sheet = load_workbook(BytesIO(workbook.getvalue())).active
+
+    assert records[0]["Présences"] == 2
+    assert sheet["D5"].value == 2
+    assert warnings == [
+        "Écart détecté [Le vendredi 4 sept. 2026 | Nuit | URG | Inf] : "
+        "Présences indiquées = 1, Codes comptés = 2. "
+        "La valeur 2 a été retenue pour le fichier Excel."
+    ]
