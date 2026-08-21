@@ -5,7 +5,7 @@ from pathlib import Path
 # Add project root directory to Python's import path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from backend.core.workforce_pipeline import SHIFT_OPTIONS, convert_workforce_pdf
+from backend.core.workforce_pipeline import convert_workforce_pdf
 from tempfile import NamedTemporaryFile
 from typing import Optional, Tuple
 
@@ -178,7 +178,11 @@ def main() -> None:
             st.session_state["conversion_done"] = False
             st.session_state.pop("workforce_xlsx_warnings", None)
             st.session_state.pop("workforce_xlsx_error", None)
-    selected_shift = st.selectbox("Quart de travail", SHIFT_OPTIONS)
+    shift_selection = st.selectbox(
+        label="Sélection du quart de travail",
+        options=["Nuit", "Soir", "Jour"],
+        key="shift_selection",
+    )
 
     if uploaded_file is not None:
         file_type, label = detect_document_format(uploaded_file)
@@ -217,7 +221,7 @@ def main() -> None:
             try:
                 with st.spinner("Converting PDF to Excel..."):
                     conversion_warnings: list[str] = []
-                    output_buffer = convert_workforce_pdf(temp_path, selected_shift, conversion_warnings)
+                    output_buffer = convert_workforce_pdf(temp_path, shift_selection, conversion_warnings)
                 st.session_state["excel_bytes"] = output_buffer.getvalue()
                 st.session_state["conversion_done"] = True
                 st.session_state["workforce_xlsx_warnings"] = conversion_warnings
@@ -239,7 +243,7 @@ def main() -> None:
         st.download_button(
             "Download XLSX Report",
             data=st.session_state["excel_bytes"],
-            file_name="Rapport_Effectifs.xlsx",
+            file_name="summary_report.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key="download_workforce_xlsx",
         )

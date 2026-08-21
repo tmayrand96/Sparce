@@ -8,7 +8,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any, Iterable
 
-from openpyxl import Workbook
+import pandas as pd
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
@@ -143,20 +143,21 @@ def build_workforce_workbook(records: list[dict[str, Any]], shift: str) -> Bytes
     """Create a formatted workbook from validated workforce records."""
     if not records:
         raise ValueError("Au moins une ligne d'effectif est requise")
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = "Effectifs"
+    output = BytesIO()
+    headers = ("Département", "Catégorie", "Cible", "Présences", "Écart")
+    rows = [{header: record[header] for header in headers} for record in records]
+
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        pd.DataFrame(rows, columns=headers).to_excel(
+            writer, sheet_name="Effectifs", startrow=3, index=False
+        )
+        sheet = writer.sheets["Effectifs"]
+        workbook = writer.book
     report_date = records[0]["Date"]
     sheet.merge_cells("A1:E1")
     sheet["A1"] = shift
     sheet.merge_cells("A2:E2")
     sheet["A2"] = report_date
-    headers = ("Département", "Catégorie", "Cible", "Présences", "Écart")
-    for column, header in enumerate(headers, 1):
-        sheet.cell(row=4, column=column, value=header)
-    for row, record in enumerate(records, 5):
-        for column, header in enumerate(headers, 1):
-            sheet.cell(row=row, column=column, value=record[header])
     navy = "17324D"
     pale = "E8EEF3"
     thin_gray = Side(style="thin", color="B8C2CC")
@@ -176,7 +177,6 @@ def build_workforce_workbook(records: list[dict[str, Any]], shift: str) -> Bytes
     for column, width in enumerate((20, 18, 12, 14, 12), 1):
         sheet.column_dimensions[get_column_letter(column)].width = width
     sheet.freeze_panes = "A5"
-    output = BytesIO()
     workbook.save(output)
     output.seek(0)
     return output
