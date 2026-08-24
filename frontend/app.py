@@ -174,8 +174,7 @@ def main() -> None:
         )
         if st.session_state.get("upload_signature") != upload_signature:
             st.session_state["upload_signature"] = upload_signature
-            st.session_state["excel_bytes"] = None
-            st.session_state["conversion_done"] = False
+            st.session_state["xlsx_data"] = None
             st.session_state.pop("workforce_xlsx_warnings", None)
             st.session_state.pop("workforce_xlsx_error", None)
     shift_selection = st.selectbox(
@@ -222,13 +221,11 @@ def main() -> None:
                 with st.spinner("Converting PDF to Excel..."):
                     conversion_warnings: list[str] = []
                     output_buffer = convert_workforce_pdf(temp_path, shift_selection, conversion_warnings)
-                st.session_state["excel_bytes"] = output_buffer.getvalue()
-                st.session_state["conversion_done"] = True
+                st.session_state["xlsx_data"] = output_buffer.getvalue()
                 st.session_state["workforce_xlsx_warnings"] = conversion_warnings
                 st.session_state.pop("workforce_xlsx_error", None)
             except Exception as exc:  # pragma: no cover - UI-level fallback
-                st.session_state["excel_bytes"] = None
-                st.session_state["conversion_done"] = False
+                st.session_state["xlsx_data"] = None
                 st.session_state["workforce_xlsx_error"] = f"Conversion failed: {exc}"
             finally:
                 Path(temp_path).unlink(missing_ok=True)
@@ -239,10 +236,10 @@ def main() -> None:
         with st.expander("Anomalies détectées"):
             for warning in st.session_state["workforce_xlsx_warnings"]:
                 st.warning(warning)
-    if st.session_state.get("conversion_done"):
+    if st.session_state.get("xlsx_data"):
         st.download_button(
             "Download XLSX Report",
-            data=st.session_state["excel_bytes"],
+            data=st.session_state["xlsx_data"],
             file_name="summary_report.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             key="download_workforce_xlsx",
