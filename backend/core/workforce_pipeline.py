@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 import pandas as pd
+from openpyxl.formatting.rule import CellIsRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
@@ -122,7 +123,7 @@ def parse_workforce_text(
         elif category == "AA" or current_department == "ACUR/GDL":
             target = presence
         else:
-            raise _error(report_date, shift, category, category, "Cible/Présences manquant")
+            target = 0
 
         if shift == "Soir" and current_department == "URG":
             target = 3
@@ -145,15 +146,29 @@ def build_workforce_workbook(records: list[dict[str, Any]], shift: str) -> Bytes
         raise ValueError("Au moins une ligne d'effectif est requise")
     output = BytesIO()
     headers = ("Département", "Catégorie", "Cible", "Présences", "Écart")
-    rows = [{header: record[header] for header in headers} for record in records]
+    rows = [
+        {
+            "Département": record.get("Département", ""),
+            "Catégorie": record.get("Catégorie", ""),
+            "Cible": record.get("Cible", 0),
+            "Présences": record.get("Présences", 0),
+        }
+        for record in records
+    ]
+    dataframe = pd.DataFrame(rows, columns=headers[:-1]).fillna(
+        {"Cible": 0, "Présences": 0}
+    )
+    dataframe["Cible"] = pd.to_numeric(dataframe["Cible"], errors="coerce").fillna(0)
+    dataframe["Présences"] = pd.to_numeric(
+        dataframe["Présences"], errors="coerce"
+    ).fillna(0)
+    dataframe["Écart"] = dataframe["Présences"] - dataframe["Cible"]
 
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        pd.DataFrame(rows, columns=headers).to_excel(
-            writer, sheet_name="Effectifs", startrow=3, index=False
-        )
+        dataframe.to_excel(writer, sheet_name="Effectifs", startrow=3, index=False)
         sheet = writer.sheets["Effectifs"]
         workbook = writer.book
-    report_date = records[0]["Date"]
+    report_date = records[0].get("Date", "")
     sheet.merge_cells("A1:E1")
     sheet["A1"] = shift
     sheet.merge_cells("A2:E2")
@@ -174,6 +189,14 @@ def build_workforce_workbook(records: list[dict[str, Any]], shift: str) -> Bytes
             cell.border = Border(bottom=thin_gray)
             if cell.row > 4 and cell.row % 2 == 1:
                 cell.fill = PatternFill("solid", fgColor=pale)
+    red_fill = PatternFill("solid", fgColor="FFC7CE")
+    for cell in sheet["E"][4:]:
+        if cell.value != 0:
+            cell.fill = red_fill
+    sheet.conditional_formatting.add(
+        f"E5:E{sheet.max_row}",
+        CellIsRule(operator="notEqual", formula=["0"], fill=red_fill),
+    )
     for column, width in enumerate((20, 18, 12, 14, 12), 1):
         sheet.column_dimensions[get_column_letter(column)].width = width
     sheet.freeze_panes = "A5"

@@ -32,7 +32,8 @@ def test_workbook_contains_shift_date_and_formatted_rows():
     sheet = load_workbook(BytesIO(workbook.getvalue())).active
     assert sheet["A1"].value == "Soir"
     assert sheet["A2"].value == "Le vendredi 4 sept. 2026"
-    assert sheet["E6"].value == "+1TS"
+    assert sheet["E6"].value == 1
+    assert sheet["E6"].fill.fgColor.rgb == "00FFC7CE"
     assert sheet.freeze_panes == "A5"
 
 
@@ -51,3 +52,17 @@ def test_ratio_mismatch_uses_counted_codes_and_reports_warning():
         "Présences indiquées = 1, Codes comptés = 2. "
         "La valeur 2 a été retenue pour le fichier Excel."
     ]
+
+
+def test_workbook_defaults_missing_target_and_presence_to_zero():
+    workbook = build_workforce_workbook(
+        [{"Département": "URG", "Catégorie": "Inf", "Date": "Le 4 sept. 2026"}],
+        "Nuit",
+    )
+
+    sheet = load_workbook(BytesIO(workbook.getvalue())).active
+
+    assert sheet["C5"].value == 0
+    assert sheet["D5"].value == 0
+    assert sheet["E5"].value == 0
+    assert sheet["E5"].fill.fgColor.rgb != "00FFC7CE"
