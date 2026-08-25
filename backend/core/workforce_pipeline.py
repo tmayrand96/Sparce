@@ -35,6 +35,7 @@ DEPARTMENT_PATTERNS = (
     ("HF Accueil et réception", "ACUR/GDL"),
     ("CIUSSS Gestion des lits", "ACUR/GDL"),
 )
+DEPARTMENT_ORDER = ("4e", "7e", "6e", "8e", "SIC", "CDJ", "URG", "ECG", "ACUR/GDL")
 CATEGORY_PATTERNS = (
     ("Infirmière auxiliaire", "Aux"),
     ("Préposé aux bénéficiaire", "PAB"),
@@ -236,20 +237,28 @@ def build_workforce_workbook(records: list[dict[str, Any]], shift: str) -> Bytes
                     "Catégorie": record.get("Catégorie", ""),
                     "Cible": record.get("Cible", 0),
                     "Présences": record.get("Présences", 0),
+                    "_code_count": record.get(
+                        "Décompte des codes", len(record.get("Codes", []) or [])
+                    ),
                 }
                 for record in date_records
             ]
-            dataframe = pd.DataFrame(rows, columns=headers[:-1]).fillna(
+            dataframe = pd.DataFrame(rows, columns=(*headers[:-1], "_code_count")).fillna(
                 {"Cible": 0, "Présences": 0}
             )
             dataframe["Cible"] = pd.to_numeric(dataframe["Cible"], errors="coerce").fillna(0)
             dataframe["Présences"] = pd.to_numeric(
                 dataframe["Présences"], errors="coerce"
             ).fillna(0)
+            department_dtype = pd.api.types.CategoricalDtype(
+                categories=DEPARTMENT_ORDER, ordered=True
+            )
+            dataframe["Département"] = dataframe["Département"].astype(department_dtype)
+            dataframe = dataframe.sort_values(
+                by="Département", kind="stable", na_position="last"
+            ).reset_index(drop=True)
             code_counts = pd.to_numeric(
-                pd.Series(
-                    [record.get("Décompte des codes", len(record.get("Codes", []) or [])) for record in date_records]
-                ),
+                dataframe.pop("_code_count"),
                 errors="coerce",
             ).fillna(0)
             dataframe["Écart (Présences vs Cible)"] = dataframe["Présences"] - dataframe["Cible"]

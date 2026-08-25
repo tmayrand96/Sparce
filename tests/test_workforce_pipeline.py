@@ -32,8 +32,9 @@ def test_workbook_contains_shift_date_and_formatted_rows():
     sheet = load_workbook(BytesIO(workbook.getvalue())).active
     assert sheet["A1"].value == "Soir"
     assert sheet["A2"].value == "Le vendredi 4 sept. 2026"
-    assert sheet["E6"].value == 1
-    assert sheet["E6"].fill.fgColor.rgb == "00FFC7CE"
+    fourth_floor_row = next(row for row in range(5, sheet.max_row + 1) if sheet.cell(row, 1).value == "4e")
+    assert sheet.cell(fourth_floor_row, 5).value == 1
+    assert sheet.cell(fourth_floor_row, 5).fill.fgColor.rgb == "00FFC7CE"
     assert sheet.freeze_panes == "A5"
 
 
@@ -46,7 +47,8 @@ def test_ratio_mismatch_uses_counted_codes_and_reports_warning():
     sheet = load_workbook(BytesIO(workbook.getvalue())).active
 
     assert records[0]["Présences"] == 2
-    assert sheet["D5"].value == 2
+    urg_row = next(row for row in range(5, sheet.max_row + 1) if sheet.cell(row, 1).value == "URG")
+    assert sheet.cell(urg_row, 4).value == 2
     assert warnings == [
         "Écart détecté [Le vendredi 4 sept. 2026 | Nuit | URG | Inf] : "
         "Présences indiquées = 1, Codes comptés = 2. "
@@ -83,6 +85,19 @@ Infirmière 1/1 J
     assert workbook.sheetnames == ["Le lundi 7 sept. 2026", "Le mardi 8 sept. 2026"]
     assert workbook[workbook.sheetnames[0]]["A2"].value == "Le lundi 7 sept. 2026"
     assert workbook[workbook.sheetnames[1]]["A2"].value == "Le mardi 8 sept. 2026"
+
+
+def test_workbook_sorts_departments_in_business_order():
+    records = [
+        {"Département": department, "Catégorie": "Inf", "Cible": 1, "Présences": 1, "Date": "Le 7 sept. 2026"}
+        for department in ("URG", "4e", "ACUR/GDL", "CDJ", "7e", "ECG", "8e", "SIC", "6e")
+    ]
+
+    workbook = load_workbook(BytesIO(build_workforce_workbook(records, "Nuit").getvalue()))
+    sheet = workbook.active
+    departments = [sheet.cell(row, 1).value for row in range(5, sheet.max_row + 1)]
+
+    assert departments == ["4e", "7e", "6e", "8e", "SIC", "CDJ", "URG", "ECG", "ACUR/GDL"]
 
 
 def test_business_rules_remap_sic_count_dvers_and_merge_acur_gdl():
