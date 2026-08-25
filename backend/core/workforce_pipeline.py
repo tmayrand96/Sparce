@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Iterable
@@ -36,6 +37,7 @@ DEPARTMENT_PATTERNS = (
     ("CIUSSS Gestion des lits", "ACUR/GDL"),
 )
 DEPARTMENT_ORDER = ("4e", "7e", "6e", "8e", "SIC", "CDJ", "URG", "ECG", "ACUR/GDL")
+CATEGORY_ORDER = ("Inf", "Aux", "PAB", "AA")
 CATEGORY_PATTERNS = (
     ("Infirmière auxiliaire", "Aux"),
     ("Préposé aux bénéficiaire", "PAB"),
@@ -159,6 +161,15 @@ def parse_workforce_text(
         if ratio_match:
             target = int(ratio_match.group(1))
             stated_presence = int(ratio_match.group(2))
+            if target > 20:
+                warning = (
+                    f"Valeur Cible OCR improbable [{current_date} | {shift} | "
+                    f"{current_department} | {category}] : {target} remplacée par 0."
+                )
+                LOGGER.warning(warning)
+                if warnings is not None:
+                    warnings.append(warning)
+                target = 0
             if stated_presence != presence:
                 warning = (
                     f"Écart détecté [{current_date} | {shift} | {current_department} | {category}] : "
@@ -187,23 +198,39 @@ def parse_workforce_text(
         records.append({"Département": current_department, "Catégorie": category, "Cible": target, "Présences": presence, "Décompte des codes": len(codes), "Écart": suffix, "Codes": codes, "Date": current_date})
     if not records:
         raise WorkforceReportError(f"Aucune catégorie d'effectif trouvée | Date: {report_date} | Quart: {shift} | Catégorie d'emploi: inconnue | Code d'emploi: inconnu")
-    present_departments = {record["Département"] for record in records}
-    required_departments = {"7e", "6e", "SIC", "ECG"}
-    for department in sorted(required_departments - present_departments):
-        records.append({
-            "Département": department,
-            "Catégorie": "",
-            "Cible": 0,
-            "Présences": 0,
-            "Décompte des codes": 0,
-            "Écart": "",
-            "Codes": [],
-            "Date": current_date,
-        })
     return records
 
 
-def build_workforce_workbook(records: list[dict[str, Any]], shift: str) -> BytesIO:
+def _complete_date_skeleton(
+    date_records: list[dict[str, Any]], date: str
+) -> list[dict[str, Any]]:
+    present_pairs = {
+        (record.get("Département", ""), record.get("Catégorie", ""))
+        for record in date_records
+    }
+    completed = list(date_records)
+    for department in DEPARTMENT_ORDER:
+        for category in CATEGORY_ORDER:
+            if (department, category) in present_pairs:
+                continue
+            completed.append(
+                {
+                    "Département": department,
+                    "Catégorie": category,
+                    "Cible": 0,
+                    "Présences": 0,
+                    "Décompte des codes": 0,
+                    "Écart": "",
+                    "Codes": [],
+                    "Date": date,
+                }
+            )
+    return completed
+
+
+def build_workforce_workbook(
+    records: list[dict[str, Any]], shift: str, warnings: list[str] | None = None
+) -> BytesIO:
     """Create a formatted workbook from validated workforce records."""
     if not records:
         raise ValueError("Au moins une ligne d'effectif est requise")
@@ -213,6 +240,10 @@ def build_workforce_workbook(records: list[dict[str, Any]], shift: str) -> Bytes
     for record in records:
         date = record.get("Date", "") or "Date inconnue"
         records_by_date.setdefault(date, []).append(record)
+    records_by_date = {
+        date: _complete_date_skeleton(date_records, date)
+        for date, date_records in records_by_date.items()
+    }
 
     def sheet_name_for(date: str, used_names: set[str]) -> str:
         base_name = re.sub(r"[\\/*?:\[\]]", "-", date).strip() or "Effectifs"
@@ -230,6 +261,7 @@ def build_workforce_workbook(records: list[dict[str, Any]], shift: str) -> Bytes
         workbook = writer.book
         used_sheet_names: set[str] = set()
         sheets = []
+        audit_rows = []
         for report_date, date_records in records_by_date.items():
             rows = [
                 {
@@ -263,20 +295,58 @@ def build_workforce_workbook(records: list[dict[str, Any]], shift: str) -> Bytes
             ).fillna(0)
             dataframe["Écart (Présences vs Cible)"] = dataframe["Présences"] - dataframe["Cible"]
             dataframe["Écart (Décompte vs Cible)"] = code_counts - dataframe["Cible"]
+            dataframe = dataframe.drop(columns=["_code_count"], errors="ignore")
             sheet_name = sheet_name_for(report_date, used_sheet_names)
             dataframe.to_excel(writer, sheet_name=sheet_name, startrow=3, index=False)
             sheet = writer.sheets[sheet_name]
             sheets.append((sheet, dataframe))
+            audit_rows.append(
+                {
+                    "Date": report_date,
+                    "Total Cible": int(dataframe["Cible"].sum()),
+                    "Total Présences": int(dataframe["Présences"].sum()),
+                    "Total Écart": int(dataframe["Écart (Présences vs Cible)"].sum()),
+                    "Anomalies Flagged": sum(
+                        report_date in warning for warning in (warnings or [])
+                    ),
+                }
+            )
 
             sheet.merge_cells("A1:F1")
             sheet["A1"] = shift
             sheet.merge_cells("A2:F2")
             sheet["A2"] = report_date
+        audit = workbook.create_sheet("Rapport_Audit", 0)
+        audit.merge_cells("A1:E1")
+        audit["A1"] = "Rapport d'audit d'exécution"
+        audit.merge_cells("A2:E2")
+        audit["A2"] = f"Exécuté le : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | Quart : {shift}"
+        audit_headers = ("Date", "Total Cible", "Total Présences", "Total Écart", "Anomalies Flagged")
+        for column, header in enumerate(audit_headers, 1):
+            audit.cell(4, column, header)
+        for row, values in enumerate(audit_rows, 5):
+            for column, header in enumerate(audit_headers, 1):
+                audit.cell(row, column, values[header])
+        anomaly_header_row = max(6, 6 + len(audit_rows))
+        audit.cell(anomaly_header_row, 1, "Journal des anomalies")
+        for row, warning in enumerate(warnings or [], anomaly_header_row + 1):
+            audit.cell(row, 1, warning)
+            audit.merge_cells(start_row=row, start_column=1, end_row=row, end_column=5)
+
     navy = "17324D"
     pale = "E8EEF3"
     thin_gray = Side(style="thin", color="B8C2CC")
     red_fill = PatternFill("solid", fgColor="FFC7CE")
     green_fill = PatternFill("solid", fgColor="C6EFCE")
+    for row in audit.iter_rows(min_row=1, max_row=max(4, audit.max_row), min_col=1, max_col=5):
+        for cell in row:
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    for cell in audit[1] + audit[2] + audit[4]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor=navy)
+    for column, width in enumerate((28, 18, 20, 16, 20), 1):
+        audit.column_dimensions[get_column_letter(column)].width = width
+    audit.freeze_panes = "A5"
     for sheet, dataframe in sheets:
         for cell in sheet[1] + sheet[2]:
             cell.font = Font(bold=True, size=14 if cell.row == 1 else 11, color="FFFFFF")
@@ -327,7 +397,7 @@ def convert_workforce_pdf(
         if parsed.get("status") != "success":
             raise WorkforceReportError(parsed.get("message", "Extraction PDF impossible"))
         records = parse_workforce_text(parsed["raw_text"], shift, warnings)
-        return build_workforce_workbook(records, shift)
+        return build_workforce_workbook(records, shift, warnings)
     except WorkforceReportError:
         raise
     except Exception as exc:

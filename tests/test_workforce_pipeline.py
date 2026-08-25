@@ -29,7 +29,8 @@ def test_workbook_contains_shift_date_and_formatted_rows():
     records = parse_workforce_text(REPORT_TEXT, "Soir")
     workbook = build_workforce_workbook(records, "Soir")
 
-    sheet = load_workbook(BytesIO(workbook.getvalue())).active
+    loaded_workbook = load_workbook(BytesIO(workbook.getvalue()))
+    sheet = loaded_workbook["Le vendredi 4 sept. 2026"]
     assert sheet["A1"].value == "Soir"
     assert sheet["A2"].value == "Le vendredi 4 sept. 2026"
     fourth_floor_row = next(row for row in range(5, sheet.max_row + 1) if sheet.cell(row, 1).value == "4e")
@@ -44,7 +45,7 @@ def test_ratio_mismatch_uses_counted_codes_and_reports_warning():
     warnings = []
     records = parse_workforce_text(text, "Nuit", warnings)
     workbook = build_workforce_workbook(records, "Nuit")
-    sheet = load_workbook(BytesIO(workbook.getvalue())).active
+    sheet = load_workbook(BytesIO(workbook.getvalue()))["Le vendredi 4 sept. 2026"]
 
     assert records[0]["Présences"] == 2
     urg_row = next(row for row in range(5, sheet.max_row + 1) if sheet.cell(row, 1).value == "URG")
@@ -82,9 +83,9 @@ Infirmière 1/1 J
     records = parse_workforce_text(text, "Nuit")
     workbook = load_workbook(BytesIO(build_workforce_workbook(records, "Nuit").getvalue()))
 
-    assert workbook.sheetnames == ["Le lundi 7 sept. 2026", "Le mardi 8 sept. 2026"]
-    assert workbook[workbook.sheetnames[0]]["A2"].value == "Le lundi 7 sept. 2026"
-    assert workbook[workbook.sheetnames[1]]["A2"].value == "Le mardi 8 sept. 2026"
+    assert workbook.sheetnames == ["Rapport_Audit", "Le lundi 7 sept. 2026", "Le mardi 8 sept. 2026"]
+    assert workbook[workbook.sheetnames[1]]["A2"].value == "Le lundi 7 sept. 2026"
+    assert workbook[workbook.sheetnames[2]]["A2"].value == "Le mardi 8 sept. 2026"
 
 
 def test_workbook_sorts_departments_in_business_order():
@@ -94,10 +95,40 @@ def test_workbook_sorts_departments_in_business_order():
     ]
 
     workbook = load_workbook(BytesIO(build_workforce_workbook(records, "Nuit").getvalue()))
-    sheet = workbook.active
-    departments = [sheet.cell(row, 1).value for row in range(5, sheet.max_row + 1)]
+    sheet = workbook["Le 7 sept. 2026"]
+    departments = list(dict.fromkeys(sheet.cell(row, 1).value for row in range(5, sheet.max_row + 1)))
 
     assert departments == ["4e", "7e", "6e", "8e", "SIC", "CDJ", "URG", "ECG", "ACUR/GDL"]
+
+
+def test_each_date_sheet_contains_complete_department_category_skeleton():
+    records = [{"Département": "URG", "Catégorie": "Inf", "Cible": 2, "Présences": 1, "Date": "Le 7 sept. 2026"}]
+
+    workbook = load_workbook(BytesIO(build_workforce_workbook(records, "Nuit").getvalue()))
+    sheet = workbook["Le 7 sept. 2026"]
+    pairs = {(sheet.cell(row, 1).value, sheet.cell(row, 2).value) for row in range(5, sheet.max_row + 1)}
+
+    assert len(pairs) == 36
+    assert all((department, category) in pairs for department in ("4e", "7e", "6e", "8e", "SIC", "CDJ", "URG", "ECG", "ACUR/GDL") for category in ("Inf", "Aux", "PAB", "AA"))
+
+
+def test_audit_tab_records_execution_summary_and_ocr_flags():
+    warnings = []
+    records = parse_workforce_text(
+        "Le lundi 7 sept. 2026\nHF Urgence\nInfirmière 25/1 URG N",
+        "Nuit",
+        warnings,
+    )
+
+    workbook = load_workbook(BytesIO(build_workforce_workbook(records, "Nuit", warnings).getvalue()))
+    audit = workbook["Rapport_Audit"]
+
+    assert workbook.sheetnames[0] == "Rapport_Audit"
+    assert audit["A1"].value == "Rapport d'audit d'exécution"
+    assert audit["A5"].value == "Le lundi 7 sept. 2026"
+    assert audit["B5"].value == 0
+    assert audit["E5"].value == 2
+    assert audit["A8"].value == warnings[0]
 
 
 def test_business_rules_remap_sic_count_dvers_and_merge_acur_gdl():
@@ -120,7 +151,7 @@ Agent Adm 1-2-3-4 ACUR
     sic_records = [record for record in records if record["Codes"] == ["SIC"]]
     urg_aux = next(record for record in records if record["Département"] == "URG" and record["Catégorie"] == "Aux")
     workbook = load_workbook(BytesIO(build_workforce_workbook(records, "Nuit").getvalue()))
-    sheet = workbook.active
+    sheet = workbook["Le lundi 7 sept. 2026"]
 
     assert [record["Département"] for record in sic_records] == ["SIC", "SIC", "CDJ", "CDJ"]
     assert urg_aux["Présences"] == 1
