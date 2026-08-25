@@ -66,3 +66,51 @@ def test_workbook_defaults_missing_target_and_presence_to_zero():
     assert sheet["D5"].value == 0
     assert sheet["E5"].value == 0
     assert sheet["E5"].fill.fgColor.rgb != "00FFC7CE"
+
+
+def test_workbook_uses_one_sheet_per_report_date():
+    text = """Le lundi 7 sept. 2026
+HF Urgence
+Infirmière 1/1 N
+Le mardi 8 sept. 2026
+HF Urgence
+Infirmière 1/1 J
+"""
+
+    records = parse_workforce_text(text, "Nuit")
+    workbook = load_workbook(BytesIO(build_workforce_workbook(records, "Nuit").getvalue()))
+
+    assert workbook.sheetnames == ["Le lundi 7 sept. 2026", "Le mardi 8 sept. 2026"]
+    assert workbook[workbook.sheetnames[0]]["A2"].value == "Le lundi 7 sept. 2026"
+    assert workbook[workbook.sheetnames[1]]["A2"].value == "Le mardi 8 sept. 2026"
+
+
+def test_business_rules_remap_sic_count_dvers_and_merge_acur_gdl():
+    text = """Le lundi 7 sept. 2026
+HF Soins intensifs coronariens
+Infirmière 1/1 SIC
+HF Soins intensifs coronariens
+Infirmière auxiliaire 1/1 SIC
+HF Soins intensifs coronariens
+Infirmière 1/1 SIC
+HF Soins intensifs coronariens
+Infirmière auxiliaire 1/1 SIC
+HF Urgence
+Infirmière auxiliaire 2/2 DVERS
+HF Accueil et réception
+Agent Adm 1-2-3-4 ACUR
+"""
+
+    records = parse_workforce_text(text, "Nuit")
+    sic_records = [record for record in records if record["Codes"] == ["SIC"]]
+    urg_aux = next(record for record in records if record["Département"] == "URG" and record["Catégorie"] == "Aux")
+    workbook = load_workbook(BytesIO(build_workforce_workbook(records, "Nuit").getvalue()))
+    sheet = workbook.active
+
+    assert [record["Département"] for record in sic_records] == ["SIC", "SIC", "CDJ", "CDJ"]
+    assert urg_aux["Présences"] == 1
+    assert urg_aux["Cible"] == 1
+    acur_row = next(row for row in range(5, sheet.max_row + 1) if sheet.cell(row, 1).value == "ACUR/GDL")
+    assert f"C{acur_row}:F{acur_row}" in {str(rng) for rng in sheet.merged_cells.ranges}
+    assert sheet.cell(acur_row, 3).value == "OK"
+    assert sheet.cell(acur_row, 3).fill.fgColor.rgb == "00C6EFCE"

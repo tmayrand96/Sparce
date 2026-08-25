@@ -19,7 +19,7 @@ SHIFT_OPTIONS = ("Nuit", "Soir", "Jour")
 VALID_CODES = (
     "N", "S", "J", "TS1.5", "TSS", "TSN", "AIC", "SIC", "FL4", "FL7",
     "FL6", "FL8", "TSTD", "MON", "CHOC", "TRI", "EVAL", "URG", "ETJ",
-    "ETS", "ETN", "BRAN", "ACUR", "HSCM",
+    "ETS", "ETN", "BRAN", "ACUR", "HSCM", "DVERS",
 )
 OVERTIME_CODES = {"TS1.5", "TSS", "TSN", "TSTD"}
 LOGGER = logging.getLogger(__name__)
@@ -104,6 +104,13 @@ def _codes_in_code_column(block: str) -> list[str]:
     return _codes_in(code_text)
 
 
+def _codes_for_department(block: str, department: str) -> list[str]:
+    codes = _codes_in_code_column(block)
+    if department != "URG":
+        return [code for code in codes if code != "DVERS"]
+    return codes
+
+
 def _error(report_date: str, shift: str, category: str, employment_code: str, detail: str) -> WorkforceReportError:
     return WorkforceReportError(
         f"{detail} | Date: {report_date} | Quart: {shift} | Catégorie d'emploi: {category} | Code d'emploi: {employment_code}"
@@ -121,13 +128,18 @@ def parse_workforce_text(
     records: list[dict[str, Any]] = []
     current_department: str | None = None
     current_date = report_date.split(" | ")[0]
+    sic_occurrence = 0
     for index, line in enumerate(lines):
         dates_on_line = _date_phrases(line)
         if dates_on_line:
             current_date = dates_on_line[0]
         department = _find_department(line)
         if department:
-            current_department = department
+            if department == "SIC":
+                sic_occurrence += 1
+                current_department = "CDJ" if sic_occurrence in {3, 4} else department
+            else:
+                current_department = department
             continue
         category = _find_label(line, CATEGORY_PATTERNS)
         if not category:
@@ -140,7 +152,7 @@ def parse_workforce_text(
             if _find_department(following) or _find_label(following, CATEGORY_PATTERNS):
                 break
             block += " " + following
-        codes = _codes_in_code_column(block)
+        codes = _codes_for_department(block, current_department)
         presence = len(codes)
         ratio_match = re.search(r"(?<!\d)(\d+)\s*/\s*(\d+)(?!\d)", block)
         if ratio_match:
@@ -162,6 +174,8 @@ def parse_workforce_text(
 
         if shift == "Soir" and current_department == "URG":
             target = 3
+        if current_department == "URG" and category == "Aux":
+            target = 1
         extra_codes = codes[target:] if presence > target else []
         if presence > target:
             suffix = f"+{presence - target}TS" if any(code in OVERTIME_CODES for code in extra_codes) else f"+{presence - target}R"
@@ -194,70 +208,102 @@ def build_workforce_workbook(records: list[dict[str, Any]], shift: str) -> Bytes
         raise ValueError("Au moins une ligne d'effectif est requise")
     output = BytesIO()
     headers = ("Département", "Catégorie", "Cible", "Présences", "Écart (Présences vs Cible)", "Écart (Décompte vs Cible)")
-    rows = [
-        {
-            "Département": record.get("Département", ""),
-            "Catégorie": record.get("Catégorie", ""),
-            "Cible": record.get("Cible", 0),
-            "Présences": record.get("Présences", 0),
-        }
-        for record in records
-    ]
-    dataframe = pd.DataFrame(rows, columns=headers[:-1]).fillna(
-        {"Cible": 0, "Présences": 0}
-    )
-    dataframe["Cible"] = pd.to_numeric(dataframe["Cible"], errors="coerce").fillna(0)
-    dataframe["Présences"] = pd.to_numeric(
-        dataframe["Présences"], errors="coerce"
-    ).fillna(0)
-    code_counts = pd.to_numeric(
-        pd.Series(
-            [record.get("Décompte des codes", len(record.get("Codes", []) or [])) for record in records]
-        ),
-        errors="coerce",
-    ).fillna(0)
-    dataframe["Écart (Présences vs Cible)"] = dataframe["Présences"] - dataframe["Cible"]
-    dataframe["Écart (Décompte vs Cible)"] = code_counts - dataframe["Cible"]
+    records_by_date: dict[str, list[dict[str, Any]]] = {}
+    for record in records:
+        date = record.get("Date", "") or "Date inconnue"
+        records_by_date.setdefault(date, []).append(record)
+
+    def sheet_name_for(date: str, used_names: set[str]) -> str:
+        base_name = re.sub(r"[\\/*?:\[\]]", "-", date).strip() or "Effectifs"
+        base_name = base_name[:31]
+        name = base_name
+        suffix = 2
+        while name in used_names:
+            suffix_text = f" ({suffix})"
+            name = f"{base_name[:31 - len(suffix_text)]}{suffix_text}"
+            suffix += 1
+        used_names.add(name)
+        return name
 
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        dataframe.to_excel(writer, sheet_name="Effectifs", startrow=3, index=False)
-        sheet = writer.sheets["Effectifs"]
         workbook = writer.book
-    report_date = " | ".join(
-        dict.fromkeys(record.get("Date", "") for record in records if record.get("Date", ""))
-    )
-    sheet.merge_cells("A1:F1")
-    sheet["A1"] = shift
-    sheet.merge_cells("A2:F2")
-    sheet["A2"] = report_date
+        used_sheet_names: set[str] = set()
+        sheets = []
+        for report_date, date_records in records_by_date.items():
+            rows = [
+                {
+                    "Département": record.get("Département", ""),
+                    "Catégorie": record.get("Catégorie", ""),
+                    "Cible": record.get("Cible", 0),
+                    "Présences": record.get("Présences", 0),
+                }
+                for record in date_records
+            ]
+            dataframe = pd.DataFrame(rows, columns=headers[:-1]).fillna(
+                {"Cible": 0, "Présences": 0}
+            )
+            dataframe["Cible"] = pd.to_numeric(dataframe["Cible"], errors="coerce").fillna(0)
+            dataframe["Présences"] = pd.to_numeric(
+                dataframe["Présences"], errors="coerce"
+            ).fillna(0)
+            code_counts = pd.to_numeric(
+                pd.Series(
+                    [record.get("Décompte des codes", len(record.get("Codes", []) or [])) for record in date_records]
+                ),
+                errors="coerce",
+            ).fillna(0)
+            dataframe["Écart (Présences vs Cible)"] = dataframe["Présences"] - dataframe["Cible"]
+            dataframe["Écart (Décompte vs Cible)"] = code_counts - dataframe["Cible"]
+            sheet_name = sheet_name_for(report_date, used_sheet_names)
+            dataframe.to_excel(writer, sheet_name=sheet_name, startrow=3, index=False)
+            sheet = writer.sheets[sheet_name]
+            sheets.append((sheet, dataframe))
+
+            sheet.merge_cells("A1:F1")
+            sheet["A1"] = shift
+            sheet.merge_cells("A2:F2")
+            sheet["A2"] = report_date
     navy = "17324D"
     pale = "E8EEF3"
     thin_gray = Side(style="thin", color="B8C2CC")
-    for cell in sheet[1] + sheet[2]:
-        cell.font = Font(bold=True, size=14 if cell.row == 1 else 11, color="FFFFFF")
-        cell.fill = PatternFill("solid", fgColor=navy)
-        cell.alignment = Alignment(horizontal="center")
-    for cell in sheet[4]:
-        cell.font = Font(bold=True, color="FFFFFF")
-        cell.fill = PatternFill("solid", fgColor=navy)
-        cell.alignment = Alignment(horizontal="center")
-    for row in sheet.iter_rows(min_row=4, max_row=sheet.max_row, min_col=1, max_col=6):
-        for cell in row:
-            cell.border = Border(bottom=thin_gray)
-            if cell.row > 4 and cell.row % 2 == 1:
-                cell.fill = PatternFill("solid", fgColor=pale)
     red_fill = PatternFill("solid", fgColor="FFC7CE")
-    for column in ("E", "F"):
-        for cell in sheet[column][4:]:
-            if cell.value != 0:
-                cell.fill = red_fill
-        sheet.conditional_formatting.add(
-            f"{column}5:{column}{sheet.max_row}",
-            CellIsRule(operator="notEqual", formula=["0"], fill=red_fill),
-        )
-    for column, width in enumerate((20, 18, 12, 14, 24, 24), 1):
-        sheet.column_dimensions[get_column_letter(column)].width = width
-    sheet.freeze_panes = "A5"
+    green_fill = PatternFill("solid", fgColor="C6EFCE")
+    for sheet, dataframe in sheets:
+        for cell in sheet[1] + sheet[2]:
+            cell.font = Font(bold=True, size=14 if cell.row == 1 else 11, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor=navy)
+            cell.alignment = Alignment(horizontal="center")
+        for cell in sheet[4]:
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor=navy)
+            cell.alignment = Alignment(horizontal="center")
+        for row in sheet.iter_rows(min_row=4, max_row=sheet.max_row, min_col=1, max_col=6):
+            for cell in row:
+                cell.border = Border(bottom=thin_gray)
+                if cell.row > 4 and cell.row % 2 == 1:
+                    cell.fill = PatternFill("solid", fgColor=pale)
+        for column in ("E", "F"):
+            for cell in sheet[column][4:]:
+                if cell.value != 0:
+                    cell.fill = red_fill
+            sheet.conditional_formatting.add(
+                f"{column}5:{column}{sheet.max_row}",
+                CellIsRule(operator="notEqual", formula=["0"], fill=red_fill),
+            )
+        for row in range(5, sheet.max_row + 1):
+            if sheet.cell(row, 1).value != "ACUR/GDL":
+                continue
+            if sheet.cell(row, 5).value >= 0 and sheet.cell(row, 6).value >= 0:
+                sheet.merge_cells(start_row=row, start_column=3, end_row=row, end_column=6)
+                merged_cell = sheet.cell(row, 3)
+                merged_cell.value = "OK"
+                merged_cell.fill = green_fill
+                merged_cell.alignment = Alignment(horizontal="center", vertical="center")
+                for column in range(4, 7):
+                    sheet.cell(row, column).fill = green_fill
+        for column, width in enumerate((20, 18, 12, 14, 24, 24), 1):
+            sheet.column_dimensions[get_column_letter(column)].width = width
+        sheet.freeze_panes = "A5"
     workbook.save(output)
     output.seek(0)
     return output
