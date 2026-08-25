@@ -48,16 +48,25 @@ class WorkforceReportError(ValueError):
     """Raised when a workforce report cannot be converted safely."""
 
 
+DATE_PATTERN = re.compile(
+    r"\b(?:Le\s+)?(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)?\s*"
+    r"\d{1,2}(?:\s+au\s+\d{1,2})?\s+"
+    r"(?:janv?(?:ier)?|févr?(?:ier)?|mars|avr(?:il)?|mai|juin|juil(?:let)?|"
+    r"août|sept?(?:embre)?|oct(?:obre)?|nov(?:embre)?|déc(?:embre)?)\.?\s+\d{4}\b",
+    flags=re.IGNORECASE,
+)
+
+
+def _date_phrases(text: str) -> list[str]:
+    return [re.sub(r"\s+", " ", match.group(0)).strip() for match in DATE_PATTERN.finditer(text)]
+
+
 def extract_report_date(text: str) -> str:
-    """Extract and return the report date phrase from the PDF text."""
-    match = re.search(
-        r"\bLe\s+[^\n\r]+?\s+\d{1,2}\s+[A-Za-zÀ-ÿ.]+\s+\d{4}\b",
-        text,
-        flags=re.IGNORECASE,
-    )
-    if not match:
+    """Extract the complete date range represented in the report text."""
+    dates = list(dict.fromkeys(_date_phrases(text)))
+    if not dates:
         raise WorkforceReportError("Date du rapport introuvable (format attendu: Le [jour] [date] [mois] [année]).")
-    return re.sub(r"\s+", " ", match.group(0)).strip()
+    return " | ".join(dates)
 
 
 def _find_label(line: str, patterns: Iterable[tuple[str, str]]) -> str | None:
@@ -68,9 +77,31 @@ def _find_label(line: str, patterns: Iterable[tuple[str, str]]) -> str | None:
     return None
 
 
+def _find_department(line: str) -> str | None:
+    department = _find_label(line, DEPARTMENT_PATTERNS)
+    if department:
+        return department
+    if re.search(r"\b7(?:e|ème|eme)?\s+étage\b", line, re.IGNORECASE):
+        return "7e"
+    if re.search(r"\b6(?:e|ème|eme)?\s+étage\b", line, re.IGNORECASE):
+        return "6e"
+    if re.search(r"\bSIC\b", line, re.IGNORECASE) and re.search(r"\bHF\b", line, re.IGNORECASE):
+        return "SIC"
+    if re.search(r"\bECG\b", line, re.IGNORECASE) and re.search(r"\bHF\b", line, re.IGNORECASE):
+        return "ECG"
+    return None
+
+
 def _codes_in(text: str) -> list[str]:
     token_pattern = re.compile(r"(?<![A-Za-z0-9.])(?:" + "|".join(map(re.escape, sorted(VALID_CODES, key=len, reverse=True))) + r")(?![A-Za-z0-9.])")
     return token_pattern.findall(text.upper())
+
+
+def _codes_in_code_column(block: str) -> list[str]:
+    """Count only codes after the row's target/presence ratio."""
+    ratio_match = re.search(r"(?<!\d)(\d+)\s*/\s*(\d+)(?!\d)", block)
+    code_text = block[ratio_match.end():] if ratio_match else block
+    return _codes_in(code_text)
 
 
 def _error(report_date: str, shift: str, category: str, employment_code: str, detail: str) -> WorkforceReportError:
@@ -89,8 +120,12 @@ def parse_workforce_text(
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     records: list[dict[str, Any]] = []
     current_department: str | None = None
+    current_date = report_date.split(" | ")[0]
     for index, line in enumerate(lines):
-        department = _find_label(line, DEPARTMENT_PATTERNS)
+        dates_on_line = _date_phrases(line)
+        if dates_on_line:
+            current_date = dates_on_line[0]
+        department = _find_department(line)
         if department:
             current_department = department
             continue
@@ -102,10 +137,10 @@ def parse_workforce_text(
 
         block = line
         for following in lines[index + 1:]:
-            if _find_label(following, DEPARTMENT_PATTERNS) or _find_label(following, CATEGORY_PATTERNS):
+            if _find_department(following) or _find_label(following, CATEGORY_PATTERNS):
                 break
             block += " " + following
-        codes = _codes_in(block)
+        codes = _codes_in_code_column(block)
         presence = len(codes)
         ratio_match = re.search(r"(?<!\d)(\d+)\s*/\s*(\d+)(?!\d)", block)
         if ratio_match:
@@ -113,7 +148,7 @@ def parse_workforce_text(
             stated_presence = int(ratio_match.group(2))
             if stated_presence != presence:
                 warning = (
-                    f"Écart détecté [{report_date} | {shift} | {current_department} | {category}] : "
+                    f"Écart détecté [{current_date} | {shift} | {current_department} | {category}] : "
                     f"Présences indiquées = {stated_presence}, Codes comptés = {presence}. "
                     f"La valeur {presence} a été retenue pour le fichier Excel."
                 )
@@ -134,9 +169,22 @@ def parse_workforce_text(
             suffix = f"-{target - presence}"
         else:
             suffix = ""
-        records.append({"Département": current_department, "Catégorie": category, "Cible": target, "Présences": presence, "Écart": suffix, "Codes": codes, "Date": report_date})
+        records.append({"Département": current_department, "Catégorie": category, "Cible": target, "Présences": presence, "Décompte des codes": len(codes), "Écart": suffix, "Codes": codes, "Date": current_date})
     if not records:
         raise WorkforceReportError(f"Aucune catégorie d'effectif trouvée | Date: {report_date} | Quart: {shift} | Catégorie d'emploi: inconnue | Code d'emploi: inconnu")
+    present_departments = {record["Département"] for record in records}
+    required_departments = {"7e", "6e", "SIC", "ECG"}
+    for department in sorted(required_departments - present_departments):
+        records.append({
+            "Département": department,
+            "Catégorie": "",
+            "Cible": 0,
+            "Présences": 0,
+            "Décompte des codes": 0,
+            "Écart": "",
+            "Codes": [],
+            "Date": current_date,
+        })
     return records
 
 
@@ -145,7 +193,7 @@ def build_workforce_workbook(records: list[dict[str, Any]], shift: str) -> Bytes
     if not records:
         raise ValueError("Au moins une ligne d'effectif est requise")
     output = BytesIO()
-    headers = ("Département", "Catégorie", "Cible", "Présences", "Écart")
+    headers = ("Département", "Catégorie", "Cible", "Présences", "Écart (Présences vs Cible)", "Écart (Décompte vs Cible)")
     rows = [
         {
             "Département": record.get("Département", ""),
@@ -162,16 +210,25 @@ def build_workforce_workbook(records: list[dict[str, Any]], shift: str) -> Bytes
     dataframe["Présences"] = pd.to_numeric(
         dataframe["Présences"], errors="coerce"
     ).fillna(0)
-    dataframe["Écart"] = dataframe["Présences"] - dataframe["Cible"]
+    code_counts = pd.to_numeric(
+        pd.Series(
+            [record.get("Décompte des codes", len(record.get("Codes", []) or [])) for record in records]
+        ),
+        errors="coerce",
+    ).fillna(0)
+    dataframe["Écart (Présences vs Cible)"] = dataframe["Présences"] - dataframe["Cible"]
+    dataframe["Écart (Décompte vs Cible)"] = code_counts - dataframe["Cible"]
 
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         dataframe.to_excel(writer, sheet_name="Effectifs", startrow=3, index=False)
         sheet = writer.sheets["Effectifs"]
         workbook = writer.book
-    report_date = records[0].get("Date", "")
-    sheet.merge_cells("A1:E1")
+    report_date = " | ".join(
+        dict.fromkeys(record.get("Date", "") for record in records if record.get("Date", ""))
+    )
+    sheet.merge_cells("A1:F1")
     sheet["A1"] = shift
-    sheet.merge_cells("A2:E2")
+    sheet.merge_cells("A2:F2")
     sheet["A2"] = report_date
     navy = "17324D"
     pale = "E8EEF3"
@@ -184,20 +241,21 @@ def build_workforce_workbook(records: list[dict[str, Any]], shift: str) -> Bytes
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill("solid", fgColor=navy)
         cell.alignment = Alignment(horizontal="center")
-    for row in sheet.iter_rows(min_row=4, max_row=sheet.max_row, min_col=1, max_col=5):
+    for row in sheet.iter_rows(min_row=4, max_row=sheet.max_row, min_col=1, max_col=6):
         for cell in row:
             cell.border = Border(bottom=thin_gray)
             if cell.row > 4 and cell.row % 2 == 1:
                 cell.fill = PatternFill("solid", fgColor=pale)
     red_fill = PatternFill("solid", fgColor="FFC7CE")
-    for cell in sheet["E"][4:]:
-        if cell.value != 0:
-            cell.fill = red_fill
-    sheet.conditional_formatting.add(
-        f"E5:E{sheet.max_row}",
-        CellIsRule(operator="notEqual", formula=["0"], fill=red_fill),
-    )
-    for column, width in enumerate((20, 18, 12, 14, 12), 1):
+    for column in ("E", "F"):
+        for cell in sheet[column][4:]:
+            if cell.value != 0:
+                cell.fill = red_fill
+        sheet.conditional_formatting.add(
+            f"{column}5:{column}{sheet.max_row}",
+            CellIsRule(operator="notEqual", formula=["0"], fill=red_fill),
+        )
+    for column, width in enumerate((20, 18, 12, 14, 24, 24), 1):
         sheet.column_dimensions[get_column_letter(column)].width = width
     sheet.freeze_panes = "A5"
     workbook.save(output)
