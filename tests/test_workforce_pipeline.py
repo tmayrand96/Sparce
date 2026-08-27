@@ -1,7 +1,7 @@
 from io import BytesIO
 from openpyxl import load_workbook
 
-from backend.core.workforce_pipeline import build_workforce_workbook, parse_workforce_text
+from backend.core.workforce_pipeline import build_workforce_workbook, parse_ratio, parse_workforce_text
 
 
 REPORT_TEXT = """Le vendredi 4 sept. 2026
@@ -55,6 +55,25 @@ def test_ratio_mismatch_uses_counted_codes_and_reports_warning():
         "Présences indiquées = 1, Codes comptés = 2. "
         "La valeur 2 a été retenue pour le fichier Excel."
     ]
+
+
+def test_anonymized_report_keeps_rows_with_flexible_department_header():
+    text = """Le vendredi 4 sept. 2026
+HF Unité de Médecine 4e étage
+Infirmière Ratio/Présences 1 TE N
+"""
+
+    records = parse_workforce_text(text, "Nuit")
+
+    assert records[0]["Département"] == "4e"
+    assert records[0]["Présences"] == 1
+    assert records[0]["Codes"] == ["N"]
+
+
+def test_parse_ratio_accepts_complete_partial_and_missing_values():
+    assert parse_ratio("Ratio/Présences 3/3") == (3, 3)
+    assert parse_ratio("Ratio/Présences 1") == (1, None)
+    assert parse_ratio("Ratio/Présences/") == (None, None)
 
 
 def test_workbook_defaults_missing_target_and_presence_to_zero():

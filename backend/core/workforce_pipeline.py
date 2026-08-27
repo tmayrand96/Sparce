@@ -81,6 +81,14 @@ def _find_label(line: str, patterns: Iterable[tuple[str, str]]) -> str | None:
 
 
 def _find_department(line: str) -> str | None:
+    medicine_floor = re.search(
+        r"\bHF\s+Unité\s+de\s+médecine\s*-?\s*(\d+\s*(?:e|ème|eme)?\s*étage)\b",
+        line,
+        re.IGNORECASE,
+    )
+    if medicine_floor:
+        floor_number = re.match(r"\d+", medicine_floor.group(1))
+        return f"{floor_number.group(0)}e" if floor_number else None
     department = _find_label(line, DEPARTMENT_PATTERNS)
     if department:
         return department
@@ -93,6 +101,27 @@ def _find_department(line: str) -> str | None:
     if re.search(r"\bECG\b", line, re.IGNORECASE) and re.search(r"\bHF\b", line, re.IGNORECASE):
         return "ECG"
     return None
+
+
+def parse_ratio(ratio_str: object) -> tuple[int | None, int | None]:
+    """Parse complete, partial, or missing target/presence ratios safely."""
+    value = str(ratio_str)
+    match = re.search(r"(\d+)\s*/\s*(\d+)", value)
+    if match:
+        return int(match.group(1)), int(match.group(2))
+    single_digit = re.search(r"(\d+)", value)
+    if single_digit:
+        return int(single_digit.group(1)), None
+    return None, None
+
+
+def _ratio_from_block(block: str) -> tuple[int | None, int | None]:
+    ratio_label = re.search(r"Ratio\s*/\s*Présences", block, re.IGNORECASE)
+    if ratio_label:
+        return parse_ratio(block[ratio_label.end():])
+    if re.search(r"(?<!\d)\d+\s*/\s*\d+(?!\d)", block):
+        return parse_ratio(block)
+    return None, None
 
 
 def _codes_in(text: str) -> list[str]:
@@ -157,10 +186,8 @@ def parse_workforce_text(
             block += " " + following
         codes = _codes_for_department(block, current_department)
         presence = len(codes)
-        ratio_match = re.search(r"(?<!\d)(\d+)\s*/\s*(\d+)(?!\d)", block)
-        if ratio_match:
-            target = int(ratio_match.group(1))
-            stated_presence = int(ratio_match.group(2))
+        target, stated_presence = _ratio_from_block(block)
+        if target is not None:
             if target > 20:
                 warning = (
                     f"Valeur Cible OCR improbable [{current_date} | {shift} | "
@@ -170,7 +197,7 @@ def parse_workforce_text(
                 if warnings is not None:
                     warnings.append(warning)
                 target = 0
-            if stated_presence != presence:
+            if stated_presence is not None and stated_presence != presence:
                 warning = (
                     f"Écart détecté [{current_date} | {shift} | {current_department} | {category}] : "
                     f"Présences indiquées = {stated_presence}, Codes comptés = {presence}. "
