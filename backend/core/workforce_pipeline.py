@@ -14,6 +14,8 @@ from openpyxl.formatting.rule import CellIsRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
+from src.utils.journal_logger import log_execution_entry
+
 from .pdf_parser import PDFDocumentParser
 
 SHIFT_OPTIONS = ("Nuit", "Soir", "Jour")
@@ -82,7 +84,7 @@ def _find_label(line: str, patterns: Iterable[tuple[str, str]]) -> str | None:
 
 def _find_department(line: str) -> str | None:
     medicine_floor = re.search(
-        r"\bHF\s+Unité\s+de\s+médecine\s*-?\s*(\d+\s*(?:e|ème|eme)?\s*étage)\b",
+        r"\bH[FE]\s+Unit[eé]\s+de\s+médecine\s*-?\s*(\d+\s*(?:e|ème|eme)?\s*étage)\b",
         line,
         re.IGNORECASE,
     )
@@ -416,7 +418,10 @@ def build_workforce_workbook(
 
 
 def convert_workforce_pdf(
-    pdf_path: str | Path, shift: str, warnings: list[str] | None = None
+    pdf_path: str | Path,
+    shift: str,
+    warnings: list[str] | None = None,
+    source_file_name: str | None = None,
 ) -> BytesIO:
     """Extract a PDF report and return its formatted XLSX representation."""
     try:
@@ -424,7 +429,16 @@ def convert_workforce_pdf(
         if parsed.get("status") != "success":
             raise WorkforceReportError(parsed.get("message", "Extraction PDF impossible"))
         records = parse_workforce_text(parsed["raw_text"], shift, warnings)
-        return build_workforce_workbook(records, shift, warnings)
+        output = build_workforce_workbook(records, shift, warnings)
+        log_execution_entry(
+            source_file=source_file_name or str(pdf_path),
+            anonymized=False,
+            report_date=" | ".join(dict.fromkeys(record.get("Date", "") for record in records)),
+            shift=shift,
+            records=records,
+            warnings=warnings,
+        )
+        return output
     except WorkforceReportError:
         raise
     except Exception as exc:

@@ -1,4 +1,5 @@
 import sys
+from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 
@@ -6,6 +7,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from backend.core.workforce_pipeline import convert_workforce_pdf
+from src.utils.journal_logger import DEFAULT_JOURNAL_PATH
 from tempfile import NamedTemporaryFile
 from typing import Optional, Tuple
 
@@ -220,12 +222,19 @@ def main() -> None:
             try:
                 with st.spinner("Converting PDF to Excel..."):
                     conversion_warnings: list[str] = []
-                    output_buffer = convert_workforce_pdf(temp_path, shift_selection, conversion_warnings)
+                    output_buffer = convert_workforce_pdf(
+                        temp_path,
+                        shift_selection,
+                        conversion_warnings,
+                        source_file_name=getattr(uploaded_file, "name", None),
+                    )
                 st.session_state["xlsx_bytes"] = output_buffer.getvalue()
+                st.session_state["journal_bytes"] = DEFAULT_JOURNAL_PATH.read_bytes()
                 st.session_state["workforce_xlsx_warnings"] = conversion_warnings
                 st.session_state.pop("workforce_xlsx_error", None)
             except Exception as exc:  # pragma: no cover - UI-level fallback
                 st.session_state["xlsx_bytes"] = None
+                st.session_state["journal_bytes"] = None
                 st.session_state["workforce_xlsx_error"] = f"Conversion failed: {exc}"
             finally:
                 Path(temp_path).unlink(missing_ok=True)
@@ -237,13 +246,26 @@ def main() -> None:
             for warning in st.session_state["workforce_xlsx_warnings"]:
                 st.warning(warning)
     if st.session_state.get("xlsx_bytes"):
-        st.download_button(
-            "Download XLSX Report",
-            data=st.session_state["xlsx_bytes"],
-            file_name="summary_report.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key="download_workforce_xlsx",
-        )
+        download_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        xlsx_col, journal_col = st.columns(2)
+        with xlsx_col:
+            st.download_button(
+                "Download XLSX Report",
+                data=st.session_state["xlsx_bytes"],
+                file_name="summary_report.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="download_workforce_xlsx",
+                use_container_width=True,
+            )
+        with journal_col:
+            st.download_button(
+                "Download AI Execution Journal",
+                data=st.session_state.get("journal_bytes", b""),
+                file_name=f"AI_Execution_Journal_{download_timestamp}.md",
+                mime="text/markdown",
+                key="download_ai_execution_journal",
+                use_container_width=True,
+            )
 
 
 if __name__ == "__main__":
