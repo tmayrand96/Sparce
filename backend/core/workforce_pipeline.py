@@ -22,7 +22,7 @@ SHIFT_OPTIONS = ("Nuit", "Soir", "Jour")
 VALID_CODES = (
     "N", "S", "J", "TS1.5", "TSS", "TSN", "AIC", "SIC", "FL4", "FL7",
     "FL6", "FL8", "TSTD", "MON", "CHOC", "TRI", "EVAL", "URG", "ETJ",
-    "ETS", "ETN", "BRAN", "ACUR", "HSCM", "DVERS",
+    "ETS", "ETN", "BRAN", "ACUR", "HSCM", "DVERS", "CDJ", "FL", "HJT",
 )
 OVERTIME_CODES = {"TS1.5", "TSS", "TSN", "TSTD"}
 LOGGER = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ LOGGER = logging.getLogger(__name__)
 DEPARTMENT_PATTERNS = (
     ("HF Unité de Médecine - 4e étage", "4e"),
     ("HF Unité de Médecine - 7e étage", "7e"),
-    ("HF Unité de Médecine - 6e étage", "6e"),
+    ("HF Unité de Médecine - 6e étage", "8e"),
     ("HF Chirurgie court séjour", "8e"),
     ("HF Soins intensifs coronariens", "SIC"),
     ("HF Urgence", "URG"),
@@ -45,6 +45,7 @@ CATEGORY_PATTERNS = (
     ("Préposé aux bénéficiaire", "PAB"),
     ("Préposé aux bénéficiaires", "PAB"),
     ("Agent Adm 1-2-3-4", "AA"),
+    ("AA3 sec et adm", "AA"),
     ("Infirmière", "Inf"),
 )
 
@@ -90,14 +91,20 @@ def _find_department(line: str) -> str | None:
     )
     if medicine_floor:
         floor_number = re.match(r"\d+", medicine_floor.group(1))
-        return f"{floor_number.group(0)}e" if floor_number else None
+        if floor_number:
+            floor = int(floor_number.group(0))
+            # Apply business rule: floor 6 maps to "8e", floor 7 maps to "7e"
+            if floor == 6:
+                return "8e"
+            return f"{floor}e"
+        return None
     department = _find_label(line, DEPARTMENT_PATTERNS)
     if department:
         return department
     if re.search(r"\b7(?:e|ème|eme)?\s+étage\b", line, re.IGNORECASE):
         return "7e"
     if re.search(r"\b6(?:e|ème|eme)?\s+étage\b", line, re.IGNORECASE):
-        return "6e"
+        return "8e"
     if re.search(r"\bSIC\b", line, re.IGNORECASE) and re.search(r"\bHF\b", line, re.IGNORECASE):
         return "SIC"
     if re.search(r"\bECG\b", line, re.IGNORECASE) and re.search(r"\bHF\b", line, re.IGNORECASE):
@@ -145,6 +152,13 @@ def _codes_for_department(block: str, department: str) -> list[str]:
     return codes
 
 
+def _has_date_and_department_on_line(line: str) -> bool:
+    """Check if a line contains both a date and a department marker."""
+    has_date = bool(_date_phrases(line))
+    has_department = bool(_find_department(line))
+    return has_date and has_department
+
+
 def _error(report_date: str, shift: str, category: str, employment_code: str, detail: str) -> WorkforceReportError:
     return WorkforceReportError(
         f"{detail} | Date: {report_date} | Quart: {shift} | Catégorie d'emploi: {category} | Code d'emploi: {employment_code}"
@@ -179,6 +193,15 @@ def parse_workforce_text(
         if not category:
             continue
         if current_department is None:
+            # Look ahead to find department in the current block
+            for following in lines[index + 1:]:
+                found_dept = _find_department(following)
+                if found_dept:
+                    current_department = found_dept
+                    break
+                if _find_label(following, CATEGORY_PATTERNS):
+                    break
+        if current_department is None:
             raise _error(report_date, shift, category, category, "Département introuvable")
 
         block = line
@@ -188,7 +211,11 @@ def parse_workforce_text(
             block += " " + following
         codes = _codes_for_department(block, current_department)
         presence = len(codes)
-        target, stated_presence = _ratio_from_block(block)
+        # Apply business rule: ignore ratios on lines that contain both date and department
+        if _has_date_and_department_on_line(line):
+            target, stated_presence = None, None
+        else:
+            target, stated_presence = _ratio_from_block(block)
         if target is not None:
             if target > 20:
                 warning = (
