@@ -30,7 +30,7 @@ LOGGER = logging.getLogger(__name__)
 DEPARTMENT_PATTERNS = (
     ("HF Unité de Médecine - 4e étage", "4e"),
     ("HF Unité de Médecine - 7e étage", "7e"),
-    ("HF Unité de Médecine - 6e étage", "8e"),
+    ("HF Unité de Médecine - 6e étage", "6e"),
     ("HF Chirurgie court séjour", "8e"),
     ("HF Soins intensifs coronariens", "SIC"),
     ("HF Urgence", "URG"),
@@ -93,9 +93,7 @@ def _find_department(line: str) -> str | None:
         floor_number = re.match(r"\d+", medicine_floor.group(1))
         if floor_number:
             floor = int(floor_number.group(0))
-            # Apply business rule: floor 6 maps to "8e", floor 7 maps to "7e"
-            if floor == 6:
-                return "8e"
+            # Map floor to department code
             return f"{floor}e"
         return None
     department = _find_label(line, DEPARTMENT_PATTERNS)
@@ -104,7 +102,7 @@ def _find_department(line: str) -> str | None:
     if re.search(r"\b7(?:e|ème|eme)?\s+étage\b", line, re.IGNORECASE):
         return "7e"
     if re.search(r"\b6(?:e|ème|eme)?\s+étage\b", line, re.IGNORECASE):
-        return "8e"
+        return "6e"
     if re.search(r"\bSIC\b", line, re.IGNORECASE) and re.search(r"\bHF\b", line, re.IGNORECASE):
         return "SIC"
     if re.search(r"\bECG\b", line, re.IGNORECASE) and re.search(r"\bHF\b", line, re.IGNORECASE):
@@ -296,8 +294,29 @@ def build_workforce_workbook(
     for record in records:
         date = record.get("Date", "") or "Date inconnue"
         records_by_date.setdefault(date, []).append(record)
+    
+    # Deduplicate categories per department per date and enforce category order
+    def deduplicate_and_sort_records(date_records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        seen = set()
+        deduplicated = []
+        for record in date_records:
+            dept = record.get("Département", "")
+            cat = record.get("Catégorie", "")
+            key = (dept, cat)
+            if key not in seen:
+                seen.add(key)
+                deduplicated.append(record)
+        
+        # Sort by category order within the deduplicated list
+        category_order_idx = {cat: idx for idx, cat in enumerate(CATEGORY_ORDER)}
+        deduplicated.sort(key=lambda r: (
+            DEPARTMENT_ORDER.index(r.get("Département", "")) if r.get("Département", "") in DEPARTMENT_ORDER else len(DEPARTMENT_ORDER),
+            category_order_idx.get(r.get("Catégorie", ""), len(CATEGORY_ORDER))
+        ))
+        return deduplicated
+    
     records_by_date = {
-        date: _complete_date_skeleton(date_records, date)
+        date: deduplicate_and_sort_records(_complete_date_skeleton(date_records, date))
         for date, date_records in records_by_date.items()
     }
 
@@ -318,9 +337,11 @@ def build_workforce_workbook(
         used_sheet_names: set[str] = set()
         sheets = []
         audit_rows = []
+        hor12_formatting_rows: list[tuple[Any, int]] = []  # Track (sheet, row_number) for HOR12 formatting
         for report_date, date_records in records_by_date.items():
-            rows = [
-                {
+            rows = []
+            for idx, record in enumerate(date_records):
+                rows.append({
                     "Département": record.get("Département", ""),
                     "Catégorie": record.get("Catégorie", ""),
                     "Cible": record.get("Cible", 0),
@@ -328,10 +349,9 @@ def build_workforce_workbook(
                     "_code_count": record.get(
                         "Décompte des codes", len(record.get("Codes", []) or [])
                     ),
-                }
-                for record in date_records
-            ]
-            dataframe = pd.DataFrame(rows, columns=(*headers[:-1], "_code_count")).fillna(
+                    "_codes": record.get("Codes", []),  # Track codes for HOR12 detection
+                })
+            dataframe = pd.DataFrame(rows, columns=(*headers[:-1], "_code_count", "_codes")).fillna(
                 {"Cible": 0, "Présences": 0}
             )
             dataframe["Cible"] = pd.to_numeric(dataframe["Cible"], errors="coerce").fillna(0)
@@ -342,20 +362,33 @@ def build_workforce_workbook(
                 categories=DEPARTMENT_ORDER, ordered=True
             )
             dataframe["Département"] = dataframe["Département"].astype(department_dtype)
+            # Sort by department first, then by category order
+            category_order_idx = {cat: idx for idx, cat in enumerate(CATEGORY_ORDER)}
+            dataframe["_category_order"] = dataframe["Catégorie"].map(lambda x: category_order_idx.get(x, len(CATEGORY_ORDER)))
             dataframe = dataframe.sort_values(
-                by="Département", kind="stable", na_position="last"
+                by=["Département", "_category_order"], kind="stable", na_position="last"
             ).reset_index(drop=True)
+            dataframe = dataframe.drop(columns=["_category_order"], errors="ignore")
             code_counts = pd.to_numeric(
                 dataframe.pop("_code_count"),
                 errors="coerce",
             ).fillna(0)
+            codes_list = dataframe.pop("_codes")
             dataframe["Écart (Présences vs Cible)"] = dataframe["Présences"] - dataframe["Cible"]
             dataframe["Écart (Décompte vs Cible)"] = code_counts - dataframe["Cible"]
             dataframe = dataframe.drop(columns=["_code_count"], errors="ignore")
+            
             sheet_name = sheet_name_for(report_date, used_sheet_names)
             dataframe.to_excel(writer, sheet_name=sheet_name, startrow=3, index=False)
             sheet = writer.sheets[sheet_name]
             sheets.append((sheet, dataframe))
+            
+            # Track rows with HOR12 codes for formatting
+            for idx, codes in enumerate(codes_list):
+                if codes and "HOR12" in codes:
+                    excel_row = idx + 5  # +5 because of header rows (startrow=3 + header row 4)
+                    hor12_formatting_rows.append((sheet, excel_row, dataframe.iloc[idx]))
+            
             audit_rows.append(
                 {
                     "Date": report_date,
@@ -439,6 +472,19 @@ def build_workforce_workbook(
         for column, width in enumerate((20, 18, 12, 14, 24, 24), 1):
             sheet.column_dimensions[get_column_letter(column)].width = width
         sheet.freeze_panes = "A5"
+    
+    # Apply HOR12 formatting (dark blue background with white text)
+    dark_blue_fill = PatternFill("solid", fgColor="17324D")  # Same dark blue as headers
+    white_font = Font(color="FFFFFF", bold=True)
+    for sheet, excel_row, row_data in hor12_formatting_rows:
+        # Format column F (Écart (Décompte vs Cible)) for HOR12
+        cell = sheet.cell(excel_row, 6)  # Column F is column 6
+        current_value = cell.value or 0
+        cell.value = f"{current_value}+HOR12"
+        cell.fill = dark_blue_fill
+        cell.font = white_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+    
     workbook.save(output)
     output.seek(0)
     return output

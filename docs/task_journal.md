@@ -128,3 +128,73 @@
 - **Discrepancies / Warnings:** `Le vendredi 4 sept. 2026 | 4e | PAB: Cible=2, Présences=5; Le vendredi 4 sept. 2026 | 8e | PAB: Cible=2, Présences=3; Le vendredi 4 sept. 2026 | SIC | PAB: Cible=4, Présences=5; Le vendredi 4 sept. 2026 | URG | PAB: Cible=3, Présences=1; Le vendredi 4 sept. 2026 | ACUR/GDL | AA: Cible=0, Présences=2; Écart détecté [Le vendredi 4 sept. 2026 | Soir | 7e | PAB] : Présences indiquées = 3, Codes comptés = 2. La valeur 2 a été retenue pour le fichier Excel.; Valeur Cible OCR improbable [Le vendredi 4 sept. 2026 | Soir | ACUR/GDL | AA] : 5315 remplacée par 0.`
 
 ---
+## 📝 Execution Journal Entry — 2026-08-30 22:15:48 EDT
+
+- **Dernier Commit Git:** Updated business rules for better OCR readability
+- **Description de la Mise à Jour:** PDF-to-XLSX conversion pipeline execution
+- **Source File:** Rapport-Template-Soir.pdf
+- **Report Context:** Le vendredi 4 sept. 2026 | 4 sept. 2026 | Shift: Soir
+
+### 📊 Parsing Metrics
+- **Total Shift Rows Extracted:** 9
+- **Total Departments Identified:** 7
+- **Code Count:**
+  - 4e: FL4: 3, N: 1, TSS: 1
+  - 6e: FL6: 2, N: 1
+  - 7e: FL7: 2
+  - 8e: FL8: 2
+  - ACUR/GDL: ACUR: 2, FL: 1, HSCM: 1
+  - SIC: CDJ: 2, N: 1, SIC: 2
+  - URG: N: 1
+
+### ⚠️ Execution Warnings
+  - Écart détecté [Le vendredi 4 sept. 2026 | Soir | 7e | PAB] : Présences indiquées = 3, Codes comptés = 2. La valeur 2 a été retenue pour le fichier Excel.
+  - Valeur Cible OCR improbable [Le vendredi 4 sept. 2026 | Soir | ACUR/GDL | AA] : 5315 remplacée par 0.
+
+### ✅ Validation Checklist
+- ✅ Department mapping verified
+- ✅ Category normalization applied
+- ✅ Ratio exclusion rules enforced
+
+### 📌 Notes
+Execution completed successfully. All records processed and formatted for Excel export.
+
+### 🔍 Calculation & Alignment Audit
+Total records processed: 9
+Departments identified: 4e, 6e, 7e, 8e, ACUR/GDL, SIC, URG
+
+---
+## 📝 Execution Journal Entry — 2026-08-30 22:29:28 EDT
+
+- **Dernier Commit Git:** Updated business rules for better OCR readability
+- **Description de la Mise à Jour:** Rapport de conversion PDF vers Excel avec décompte OCR et validation des codes
+- **Source File:** Rapport-Template-Soir.pdf
+- **Report Context:** Le vendredi 4 sept. 2026 | 4 sept. 2026 | Shift: Soir
+
+### 📊 Parsing Metrics
+- **Total Shift Rows Extracted:** 9
+- **Total Departments Identified:** 7
+- **Code Count:**
+  - 4e: FL4=3, N=1, TSS=1
+  - 6e: FL6=2, N=1
+  - 7e: FL7=2
+  - 8e: FL8=2
+  - ACUR/GDL: ACUR=2, FL=1, HSCM=1
+  - SIC: CDJ=2, N=1, SIC=2
+  - URG: N=1
+
+### ⚠️ Execution Warnings
+Écart détecté [Le vendredi 4 sept. 2026 | Soir | 7e | PAB] : Présences indiquées = 3, Codes comptés = 2. La valeur 2 a été retenue pour le fichier Excel.; Valeur Cible OCR improbable [Le vendredi 4 sept. 2026 | Soir | ACUR/GDL | AA] : 5315 remplacée par 0.
+
+### ✅ Validation Checklist
+- ✓ Records parsed successfully
+- ✓ Departments identified: 7
+- ⚠ 5 discrepancies detected
+
+### 📌 Notes
+Anonymisation: Désactivée
+
+### 🔍 Calculation & Alignment Audit
+5 ligne(s) avec écart détecté(es). Vérification manuelle recommandée.
+
+---

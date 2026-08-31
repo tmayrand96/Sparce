@@ -180,7 +180,7 @@ def main() -> None:
             st.session_state.pop("workforce_xlsx_warnings", None)
             st.session_state.pop("workforce_xlsx_error", None)
     shift_selection = st.selectbox(
-        label="Sélection du quart de travail",
+        label="Select Shift",
         options=["Nuit", "Soir", "Jour"],
         key="shift_selection",
     )
