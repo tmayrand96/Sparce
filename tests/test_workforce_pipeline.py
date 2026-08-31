@@ -17,12 +17,31 @@ def test_parse_report_applies_shift_exception_and_validates_codes():
     records = parse_workforce_text(REPORT_TEXT, "Soir")
 
     assert records[0]["Département"] == "URG"
-    assert records[0]["Cible"] == 3
+    assert records[0]["Cible"] == 1
     assert records[0]["Présences"] == 1
-    assert records[0]["Écart"] == "-2"
+    assert records[0]["Écart"] == ""
     assert records[1]["Écart"] == "+1TS"
-    assert records[2]["Cible"] == 2
+    assert records[2]["Cible"] == 1
     assert records[2]["Présences"] == 2
+
+
+def test_missing_aa_ratio_uses_shift_department_grid_and_preserves_explicit_target():
+    text = """Le vendredi 4 sept. 2026
+HF Unité de Médecine - 4e étage
+Agent Adm 1-2-3-4 FL4
+HF Urgence
+Agent Adm 1-2-3-4 URG
+HF Accueil et réception
+Agent Adm 1-2-3-4 7/1 ACUR
+"""
+
+    records = parse_workforce_text(text, "Soir")
+
+    assert [(record["Département"], record["Cible"], record["Présences"]) for record in records] == [
+        ("4e", 1, 1),
+        ("URG", 2, 1),
+        ("ACUR/GDL", 7, 1),
+    ]
 
 
 def test_workbook_contains_shift_date_and_formatted_rows():
@@ -33,6 +52,9 @@ def test_workbook_contains_shift_date_and_formatted_rows():
     sheet = loaded_workbook["Le vendredi 4 sept. 2026"]
     assert sheet["A1"].value == "Soir"
     assert sheet["A2"].value == "Le vendredi 4 sept. 2026"
+    assert [cell.value for cell in sheet[4]] == [
+        "Département", "Catégorie", "Cible", "Présences", "Écart (Décompte vs Cible)"
+    ]
     fourth_floor_row = next(row for row in range(5, sheet.max_row + 1) if sheet.cell(row, 1).value == "4e")
     assert sheet.cell(fourth_floor_row, 5).value == 1
     assert sheet.cell(fourth_floor_row, 5).fill.fgColor.rgb == "00FFC7CE"
@@ -82,12 +104,16 @@ def test_workbook_defaults_missing_target_and_presence_to_zero():
         "Nuit",
     )
 
-    sheet = load_workbook(BytesIO(workbook.getvalue())).active
+    sheet = load_workbook(BytesIO(workbook.getvalue()))["Le 4 sept. 2026"]
 
-    assert sheet["C5"].value == 0
-    assert sheet["D5"].value == 0
-    assert sheet["E5"].value == 0
-    assert sheet["E5"].fill.fgColor.rgb != "00FFC7CE"
+    urg_inf_row = next(
+        row for row in range(5, sheet.max_row + 1)
+        if sheet.cell(row, 1).value == "URG" and sheet.cell(row, 2).value == "Inf"
+    )
+    assert sheet.cell(urg_inf_row, 3).value == 0
+    assert sheet.cell(urg_inf_row, 4).value == 0
+    assert sheet.cell(urg_inf_row, 5).value == 0
+    assert sheet.cell(urg_inf_row, 5).fill.fgColor.rgb != "00FFC7CE"
 
 
 def test_workbook_uses_one_sheet_per_report_date():
@@ -145,12 +171,12 @@ def test_audit_tab_records_execution_summary_and_ocr_flags():
     assert workbook.sheetnames[0] == "Rapport_Audit"
     assert audit["A1"].value == "Rapport d'audit d'exécution"
     assert audit["A5"].value == "Le lundi 7 sept. 2026"
-    assert audit["B5"].value == 0
+    assert audit["B5"].value == 2
     assert audit["E5"].value == 2
     assert audit["A8"].value == warnings[0]
 
 
-def test_business_rules_remap_sic_count_dvers_and_merge_acur_gdl():
+def test_business_rules_remap_sic_count_dvers_and_apply_aa_night_target():
     text = """Le lundi 7 sept. 2026
 HF Soins intensifs coronariens
 Infirmière 1/1 SIC
@@ -174,8 +200,11 @@ Agent Adm 1-2-3-4 ACUR
 
     assert [record["Département"] for record in sic_records] == ["SIC", "SIC", "CDJ", "CDJ"]
     assert urg_aux["Présences"] == 1
-    assert urg_aux["Cible"] == 1
-    acur_row = next(row for row in range(5, sheet.max_row + 1) if sheet.cell(row, 1).value == "ACUR/GDL")
-    assert f"C{acur_row}:F{acur_row}" in {str(rng) for rng in sheet.merged_cells.ranges}
-    assert sheet.cell(acur_row, 3).value == "OK"
-    assert sheet.cell(acur_row, 3).fill.fgColor.rgb == "00C6EFCE"
+    assert urg_aux["Cible"] == 2
+    acur_row = next(
+        row for row in range(5, sheet.max_row + 1)
+        if sheet.cell(row, 1).value == "ACUR/GDL" and sheet.cell(row, 2).value == "AA"
+    )
+    assert sheet.cell(acur_row, 3).value == 1
+    assert sheet.cell(acur_row, 4).value == 1
+    assert sheet.cell(acur_row, 5).value == 0

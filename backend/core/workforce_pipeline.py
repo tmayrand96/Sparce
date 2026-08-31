@@ -48,6 +48,11 @@ CATEGORY_PATTERNS = (
     ("AA3 sec et adm", "AA"),
     ("Infirmière", "Inf"),
 )
+AA_RATIO_GRID = {
+    "Jour": {"4e": 1, "7e": 1, "6e": 1, "8e": 1, "SIC": 0, "CDJ": 1, "URG": 2, "ECG": 0, "ACUR/GDL": 2},
+    "Soir": {"4e": 1, "7e": 1, "6e": 1, "8e": 1, "SIC": 0, "CDJ": 0, "URG": 2, "ECG": 0, "ACUR/GDL": 2},
+    "Nuit": {"4e": 0, "7e": 0, "6e": 0, "8e": 0, "SIC": 0, "CDJ": 0, "URG": 1, "ECG": 0, "ACUR/GDL": 1},
+}
 
 
 class WorkforceReportError(ValueError):
@@ -150,6 +155,15 @@ def _codes_for_department(block: str, department: str) -> list[str]:
     return codes
 
 
+def _target_for(category: str, department: str, shift: str, explicit_target: int | None) -> int:
+    """Prefer an explicit PDF target; otherwise use the AA reference grid."""
+    if explicit_target is not None:
+        return explicit_target
+    if category == "AA":
+        return AA_RATIO_GRID[shift][department]
+    return 0
+
+
 def _has_date_and_department_on_line(line: str) -> bool:
     """Check if a line contains both a date and a department marker."""
     has_date = bool(_date_phrases(line))
@@ -223,7 +237,7 @@ def parse_workforce_text(
                 LOGGER.warning(warning)
                 if warnings is not None:
                     warnings.append(warning)
-                target = 0
+                target = None
             if stated_presence is not None and stated_presence != presence:
                 warning = (
                     f"Écart détecté [{current_date} | {shift} | {current_department} | {category}] : "
@@ -233,15 +247,7 @@ def parse_workforce_text(
                 LOGGER.warning(warning)
                 if warnings is not None:
                     warnings.append(warning)
-        elif category == "AA" or current_department == "ACUR/GDL":
-            target = presence
-        else:
-            target = 0
-
-        if shift == "Soir" and current_department == "URG":
-            target = 3
-        if current_department == "URG" and category == "Aux":
-            target = 1
+        target = _target_for(category, current_department, shift, target)
         extra_codes = codes[target:] if presence > target else []
         if presence > target:
             suffix = f"+{presence - target}TS" if any(code in OVERTIME_CODES for code in extra_codes) else f"+{presence - target}R"
@@ -256,7 +262,7 @@ def parse_workforce_text(
 
 
 def _complete_date_skeleton(
-    date_records: list[dict[str, Any]], date: str
+    date_records: list[dict[str, Any]], date: str, shift: str
 ) -> list[dict[str, Any]]:
     present_pairs = {
         (record.get("Département", ""), record.get("Catégorie", ""))
@@ -271,7 +277,7 @@ def _complete_date_skeleton(
                 {
                     "Département": department,
                     "Catégorie": category,
-                    "Cible": 0,
+                    "Cible": _target_for(category, department, shift, None),
                     "Présences": 0,
                     "Décompte des codes": 0,
                     "Écart": "",
@@ -289,7 +295,7 @@ def build_workforce_workbook(
     if not records:
         raise ValueError("Au moins une ligne d'effectif est requise")
     output = BytesIO()
-    headers = ("Département", "Catégorie", "Cible", "Présences", "Écart (Présences vs Cible)", "Écart (Décompte vs Cible)")
+    headers = ("Département", "Catégorie", "Cible", "Présences", "Écart (Décompte vs Cible)")
     records_by_date: dict[str, list[dict[str, Any]]] = {}
     for record in records:
         date = record.get("Date", "") or "Date inconnue"
@@ -316,7 +322,7 @@ def build_workforce_workbook(
         return deduplicated
     
     records_by_date = {
-        date: deduplicate_and_sort_records(_complete_date_skeleton(date_records, date))
+        date: deduplicate_and_sort_records(_complete_date_skeleton(date_records, date, shift))
         for date, date_records in records_by_date.items()
     }
 
@@ -351,7 +357,7 @@ def build_workforce_workbook(
                     ),
                     "_codes": record.get("Codes", []),  # Track codes for HOR12 detection
                 })
-            dataframe = pd.DataFrame(rows, columns=(*headers[:-1], "_code_count", "_codes")).fillna(
+            dataframe = pd.DataFrame(rows, columns=(*headers[:4], "_code_count", "_codes")).fillna(
                 {"Cible": 0, "Présences": 0}
             )
             dataframe["Cible"] = pd.to_numeric(dataframe["Cible"], errors="coerce").fillna(0)
@@ -369,14 +375,9 @@ def build_workforce_workbook(
                 by=["Département", "_category_order"], kind="stable", na_position="last"
             ).reset_index(drop=True)
             dataframe = dataframe.drop(columns=["_category_order"], errors="ignore")
-            code_counts = pd.to_numeric(
-                dataframe.pop("_code_count"),
-                errors="coerce",
-            ).fillna(0)
+            dataframe.pop("_code_count")
             codes_list = dataframe.pop("_codes")
-            dataframe["Écart (Présences vs Cible)"] = dataframe["Présences"] - dataframe["Cible"]
-            dataframe["Écart (Décompte vs Cible)"] = code_counts - dataframe["Cible"]
-            dataframe = dataframe.drop(columns=["_code_count"], errors="ignore")
+            dataframe["Écart (Décompte vs Cible)"] = dataframe["Présences"] - dataframe["Cible"]
             
             sheet_name = sheet_name_for(report_date, used_sheet_names)
             dataframe.to_excel(writer, sheet_name=sheet_name, startrow=3, index=False)
@@ -394,16 +395,16 @@ def build_workforce_workbook(
                     "Date": report_date,
                     "Total Cible": int(dataframe["Cible"].sum()),
                     "Total Présences": int(dataframe["Présences"].sum()),
-                    "Total Écart": int(dataframe["Écart (Présences vs Cible)"].sum()),
+                    "Total Écart": int(dataframe["Écart (Décompte vs Cible)"].sum()),
                     "Anomalies Flagged": sum(
                         report_date in warning for warning in (warnings or [])
                     ),
                 }
             )
 
-            sheet.merge_cells("A1:F1")
+            sheet.merge_cells("A1:E1")
             sheet["A1"] = shift
-            sheet.merge_cells("A2:F2")
+            sheet.merge_cells("A2:E2")
             sheet["A2"] = report_date
         audit = workbook.create_sheet("Rapport_Audit", 0)
         audit.merge_cells("A1:E1")
@@ -445,12 +446,12 @@ def build_workforce_workbook(
             cell.font = Font(bold=True, color="FFFFFF")
             cell.fill = PatternFill("solid", fgColor=navy)
             cell.alignment = Alignment(horizontal="center")
-        for row in sheet.iter_rows(min_row=4, max_row=sheet.max_row, min_col=1, max_col=6):
+        for row in sheet.iter_rows(min_row=4, max_row=sheet.max_row, min_col=1, max_col=5):
             for cell in row:
                 cell.border = Border(bottom=thin_gray)
                 if cell.row > 4 and cell.row % 2 == 1:
                     cell.fill = PatternFill("solid", fgColor=pale)
-        for column in ("E", "F"):
+        for column in ("E",):
             for cell in sheet[column][4:]:
                 if cell.value != 0:
                     cell.fill = red_fill
@@ -458,18 +459,7 @@ def build_workforce_workbook(
                 f"{column}5:{column}{sheet.max_row}",
                 CellIsRule(operator="notEqual", formula=["0"], fill=red_fill),
             )
-        for row in range(5, sheet.max_row + 1):
-            if sheet.cell(row, 1).value != "ACUR/GDL":
-                continue
-            if sheet.cell(row, 5).value >= 0 and sheet.cell(row, 6).value >= 0:
-                sheet.merge_cells(start_row=row, start_column=3, end_row=row, end_column=6)
-                merged_cell = sheet.cell(row, 3)
-                merged_cell.value = "OK"
-                merged_cell.fill = green_fill
-                merged_cell.alignment = Alignment(horizontal="center", vertical="center")
-                for column in range(4, 7):
-                    sheet.cell(row, column).fill = green_fill
-        for column, width in enumerate((20, 18, 12, 14, 24, 24), 1):
+        for column, width in enumerate((20, 18, 12, 14, 24), 1):
             sheet.column_dimensions[get_column_letter(column)].width = width
         sheet.freeze_panes = "A5"
     
@@ -477,8 +467,7 @@ def build_workforce_workbook(
     dark_blue_fill = PatternFill("solid", fgColor="17324D")  # Same dark blue as headers
     white_font = Font(color="FFFFFF", bold=True)
     for sheet, excel_row, row_data in hor12_formatting_rows:
-        # Format column F (Écart (Décompte vs Cible)) for HOR12
-        cell = sheet.cell(excel_row, 6)  # Column F is column 6
+        cell = sheet.cell(excel_row, 5)
         current_value = cell.value or 0
         cell.value = f"{current_value}+HOR12"
         cell.fill = dark_blue_fill
