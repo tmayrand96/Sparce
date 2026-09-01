@@ -7,11 +7,68 @@ import sys
 from pathlib import Path
 from openpyxl import load_workbook
 
+
+def _data_rows(sheet):
+    """Index report rows by their business key."""
+    return {
+        (row[0], row[1]): row[2:5]
+        for row in sheet.iter_rows(min_row=5, values_only=True)
+        if row[0] and row[1]
+    }
+
+
+def compare_with_gold_standard(output_path: Path, target_path: Path) -> int:
+    """Print every business-value difference between generated and target workbooks."""
+    generated = load_workbook(output_path, data_only=True)
+    target = load_workbook(target_path, data_only=True)
+    differences = 0
+    fields = ("Cible", "Présences", "Écart (Décompte vs Cible)")
+
+    for sheet_name in sorted(set(generated.sheetnames) | set(target.sheetnames)):
+        if sheet_name == "Rapport_Audit":
+            continue
+        if sheet_name not in generated.sheetnames:
+            print(f"FEUILLE ABSENTE (généré) : {sheet_name}")
+            differences += 1
+            continue
+        if sheet_name not in target.sheetnames:
+            print(f"FEUILLE ABSENTE (étalon) : {sheet_name}")
+            differences += 1
+            continue
+
+        generated_rows = _data_rows(generated[sheet_name])
+        target_rows = _data_rows(target[sheet_name])
+        for department, category in sorted(set(generated_rows) | set(target_rows)):
+            key = (department, category)
+            if key not in generated_rows:
+                print(f"LIGNE ABSENTE (généré) : {sheet_name} | {department} | {category}")
+                differences += 1
+                continue
+            if key not in target_rows:
+                print(f"LIGNE ABSENTE (étalon) : {sheet_name} | {department} | {category}")
+                differences += 1
+                continue
+            for field, extracted, expected in zip(fields, generated_rows[key], target_rows[key]):
+                if extracted != expected:
+                    print(
+                        f"ÉCART : {sheet_name} | Département={department} | "
+                        f"Catégorie={category} | {field} | extrait={extracted!r} | étalon={expected!r}"
+                    )
+                    differences += 1
+
+    print(f"\nTotal des écarts métier : {differences}")
+    return differences
+
+
 def main():
     output_path = Path("tests/output_Rapport-Template-Soir.xlsx")
+    target_path = Path("tests/Rapport-Target-Soir.xlsx")
     
     if not output_path.exists():
         print(f"ERROR: Output file not found at {output_path}")
+        sys.exit(1)
+    if not target_path.exists():
+        print(f"ERROR: Gold Standard not found at {target_path}")
         sys.exit(1)
     
     workbook = load_workbook(output_path)
@@ -50,8 +107,7 @@ def main():
                 category = row[1].value
                 cible = row[2].value
                 presences = row[3].value
-                ecart_presences = row[4].value
-                ecart_decompte = row[5].value
+                ecart_decompte = row[4].value
                 
                 if dept and category:
                     rows.append({
@@ -59,7 +115,6 @@ def main():
                         'Catégorie': category,
                         'Cible': cible,
                         'Présences': presences,
-                        'Écart (Prés. vs Cible)': ecart_presences,
                         'Écart (Déc. vs Cible)': ecart_decompte,
                     })
         
@@ -77,7 +132,7 @@ def main():
             print(f"\n    {dept}:")
             for row in dept_rows:
                 print(f"      {row['Catégorie']:15s} | Cible: {str(row['Cible']):>2} | "
-                      f"Prés: {str(row['Présences']):>2} | Écart: {row['Écart (Prés. vs Cible)']}")
+                          f"Prés: {str(row['Présences']):>2} | Écart: {row['Écart (Déc. vs Cible)']}")
         
         # Verify business rules
         print(f"\n  Verification:")
@@ -99,7 +154,9 @@ def main():
         print(f"    ✓ ACUR/GDL department present: {has_acur_gdl}")
     
     print("\n" + "=" * 80)
-    return 0
+    print("AUDIT DE PRÉCISION CONTRE L'ÉTALON")
+    print("=" * 80)
+    return compare_with_gold_standard(output_path, target_path)
 
 if __name__ == "__main__":
     sys.exit(main())

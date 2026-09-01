@@ -146,10 +146,10 @@ def _find_department(line: str) -> str | None:
 def parse_ratio(ratio_str: object) -> tuple[int | None, int | None]:
     """Parse complete, partial, or missing target/presence ratios safely."""
     value = str(ratio_str)
-    match = re.search(r"(\d+)\s*/\s*(\d+)", value)
+    match = re.search(r"(\d+)\s*/\s*[^\d]{0,12}(\d+)", value)
     if match:
         return int(match.group(1)), int(match.group(2))
-    single_digit = re.search(r"(\d+)", value)
+    single_digit = re.search(r"\b(\d{1,2})\b", value)
     if single_digit:
         return int(single_digit.group(1)), None
     return None, None
@@ -158,7 +158,14 @@ def parse_ratio(ratio_str: object) -> tuple[int | None, int | None]:
 def _ratio_from_block(block: str) -> tuple[int | None, int | None]:
     ratio_label = re.search(r"Ratio\s*/\s*Présences", block, re.IGNORECASE)
     if ratio_label:
-        return parse_ratio(block[ratio_label.end():])
+        ratio_text = block[ratio_label.end():ratio_label.end() + 20]
+        match = re.match(
+            r"\s*[:._'\"-]*\s*(\d{1,2})(?!\d)(?:\s*/\s*[^\d]{0,12}(\d+))?",
+            ratio_text,
+        )
+        if match:
+            return int(match.group(1)), int(match.group(2)) if match.group(2) else None
+        return None, None
     if re.search(r"(?<!\d)\d+\s*/\s*\d+(?!\d)", block):
         return parse_ratio(block)
     return None, None
@@ -342,7 +349,10 @@ def parse_workforce_text(
                 LOGGER.warning(warning)
                 if warnings is not None:
                     warnings.append(warning)
-        target = _target_for(category, current_department, shift, target)
+        if target is None and category != "AA":
+            target = presence
+        else:
+            target = _target_for(category, current_department, shift, target)
         extra_codes = codes[target:] if presence > target else []
         if presence > target:
             suffix = f"+{presence - target}TS" if any(code in OVERTIME_CODES for code in extra_codes) else f"+{presence - target}R"
