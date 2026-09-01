@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
@@ -44,8 +45,12 @@ CATEGORY_PATTERNS = (
     ("Infirmière auxiliaire", "Aux"),
     ("Préposé aux bénéficiaire", "PAB"),
     ("Préposé aux bénéficiaires", "PAB"),
+    ("PBM", "PAB"),
+    ("PEM", "PAB"),
     ("Agent Adm 1-2-3-4", "AA"),
     ("AA3 sec et adm", "AA"),
+    ("AAS sec et adm", "AA"),
+    ("lafirmière", "Inf"),
     ("Infirmière", "Inf"),
 )
 AA_RATIO_GRID = {
@@ -72,6 +77,17 @@ def _date_phrases(text: str) -> list[str]:
     return [re.sub(r"\s+", " ", match.group(0)).strip() for match in DATE_PATTERN.finditer(text)]
 
 
+def _normalized_text(text: str) -> str:
+    return "".join(
+        character for character in unicodedata.normalize("NFD", text.casefold())
+        if unicodedata.category(character) != "Mn"
+    )
+
+
+def _date_key(date: str) -> str:
+    return re.sub(r"\b(?:le\s+)?(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\s*", "", _normalized_text(date)).strip(". ")
+
+
 def extract_report_date(text: str) -> str:
     """Extract the complete date range represented in the report text."""
     dates = list(dict.fromkeys(_date_phrases(text)))
@@ -81,18 +97,18 @@ def extract_report_date(text: str) -> str:
 
 
 def _find_label(line: str, patterns: Iterable[tuple[str, str]]) -> str | None:
-    folded = line.casefold()
+    folded = _normalized_text(line)
     for label, code in patterns:
-        if label.casefold() in folded:
+        if _normalized_text(label) in folded:
             return code
     return None
 
 
 def _find_department(line: str) -> str | None:
+    normalized_line = _normalized_text(line)
     medicine_floor = re.search(
-        r"\bH[FE]\s+Unit[eé]\s+de\s+médecine\s*-?\s*(\d+\s*(?:e|ème|eme)?\s*étage)\b",
-        line,
-        re.IGNORECASE,
+        r"\b[hm][fe]?\s+unite\s+de\s+medecine\s*-?\s*(\d+\s*(?:e|eme)?\s*etage)\b",
+        normalized_line,
     )
     if medicine_floor:
         floor_number = re.match(r"\d+", medicine_floor.group(1))
@@ -104,13 +120,25 @@ def _find_department(line: str) -> str | None:
     department = _find_label(line, DEPARTMENT_PATTERNS)
     if department:
         return department
-    if re.search(r"\b7(?:e|ème|eme)?\s+étage\b", line, re.IGNORECASE):
-        return "7e"
-    if re.search(r"\b6(?:e|ème|eme)?\s+étage\b", line, re.IGNORECASE):
-        return "6e"
-    if re.search(r"\bSIC\b", line, re.IGNORECASE) and re.search(r"\bHF\b", line, re.IGNORECASE):
+    if "chirurgie d'un jour" in normalized_line:
+        return "CDJ"
+    if "chirurgie court sejour" in normalized_line:
+        return "8e"
+    if "soins intensifs coronariens" in normalized_line:
         return "SIC"
-    if re.search(r"\bECG\b", line, re.IGNORECASE) and re.search(r"\bHF\b", line, re.IGNORECASE):
+    if "urgence" in normalized_line:
+        return "URG"
+    if "electrophysiologie" in normalized_line:
+        return "ECG"
+    if "accueil et reception" in normalized_line or "gestion des lits" in normalized_line:
+        return "ACUR/GDL"
+    if re.search(r"\b7(?:e|eme)?\s+etage\b", normalized_line):
+        return "7e"
+    if re.search(r"\b6(?:e|eme)?\s+etage\b", normalized_line):
+        return "6e"
+    if re.search(r"\bsic\b", normalized_line) and re.search(r"\bhf\b", normalized_line):
+        return "SIC"
+    if re.search(r"\becg\b", normalized_line) and re.search(r"\bhf\b", normalized_line):
         return "ECG"
     return None
 
@@ -163,6 +191,22 @@ STRUCTURAL_HEADER_PATTERN = re.compile(
     r"\b(?:employ[ée]?|te|entr[ée]e|sortie|repas|code\s+repas|no\.?\s*poste|code)\b",
     re.IGNORECASE,
 )
+EMPLOYMENT_ID_PATTERN = re.compile(r"\b(891\d|847\d|2490|3455|3480|531[57])\b")
+POSITION_ID_PATTERN = re.compile(r"\b\d{6,7}\b")
+
+
+def _category_from_staff_row(line: str) -> str | None:
+    employee_id = EMPLOYMENT_ID_PATTERN.search(line)
+    if not employee_id:
+        return None
+    value = employee_id.group(1)
+    if value in {"3455"}:
+        return "Aux"
+    if value in {"3480"}:
+        return "PAB"
+    if value.startswith("531"):
+        return "AA"
+    return "Inf"
 
 
 def _is_physical_staff_row(line: str) -> bool:
@@ -170,13 +214,23 @@ def _is_physical_staff_row(line: str) -> bool:
     if _date_phrases(line):
         return False
     return bool(STRUCTURAL_VALUE_PATTERN.search(line)) and not bool(
-        STRUCTURAL_HEADER_PATTERN.fullmatch(line.strip())
+        STRUCTURAL_HEADER_PATTERN.search(line)
     )
 
 
 def _count_physical_staff_rows(lines: Iterable[str]) -> int:
     """Count data rows from table structure without using the employment code value."""
-    return sum(_is_physical_staff_row(line) for line in lines)
+    data_rows = [line for line in lines if _is_physical_staff_row(line)]
+    employment_rows = [line for line in data_rows if EMPLOYMENT_ID_PATTERN.search(line)]
+    position_rows = [
+        line for line in data_rows
+        if POSITION_ID_PATTERN.search(line) and not EMPLOYMENT_ID_PATTERN.search(line)
+    ]
+    # Some native PDF extracts separate the employee/entry and position/code columns.
+    # Their rows represent the same people, so count the longer projection.
+    if any(not POSITION_ID_PATTERN.search(line) for line in employment_rows):
+        return max(len(employment_rows), len(position_rows))
+    return len(data_rows)
 
 
 def _target_for(category: str, department: str, shift: str, explicit_target: int | None) -> int:
@@ -208,15 +262,32 @@ def parse_workforce_text(
     if shift not in SHIFT_OPTIONS:
         raise ValueError(f"Quart invalide: {shift}")
     report_date = extract_report_date(text)
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    source_lines = [line.strip() for line in text.splitlines() if line.strip()]
+    lines: list[str] = []
+    inferred_category: str | None = None
+    for line in source_lines:
+        department = _find_department(line)
+        explicit_category = _find_label(line, CATEGORY_PATTERNS)
+        if department:
+            inferred_category = None
+        if explicit_category:
+            inferred_category = explicit_category
+        staff_category = _category_from_staff_row(line)
+        if staff_category and inferred_category != staff_category:
+            lines.append(next(label for label, code in CATEGORY_PATTERNS if code == staff_category))
+            inferred_category = staff_category
+        lines.append(line)
     records: list[dict[str, Any]] = []
     current_department: str | None = None
     current_date = report_date.split(" | ")[0]
+    primary_date_key = _date_key(current_date)
     sic_occurrence = 0
     for index, line in enumerate(lines):
         dates_on_line = _date_phrases(line)
         if dates_on_line:
-            current_date = dates_on_line[0]
+            detected_date = dates_on_line[0]
+            if _date_key(detected_date) != primary_date_key:
+                current_date = detected_date
         department = _find_department(line)
         if department:
             if department == "SIC":
@@ -224,7 +295,6 @@ def parse_workforce_text(
                 current_department = "CDJ" if sic_occurrence in {3, 4} else department
             else:
                 current_department = department
-            continue
         category = _find_label(line, CATEGORY_PATTERNS)
         if not category:
             continue

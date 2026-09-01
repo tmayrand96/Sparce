@@ -238,6 +238,16 @@ Anonymisation: Désactivée
 - **Rapport exécuté :** `tests/Rapport-Template-Soir.pdf` | **Quart :** `Soir`
 - Le rapport contient des identifiants d'employés et a été validé comme cas non anonymisé disponible dans le dépôt.
 - `Présences` est désormais le nombre de lignes de données structurées dans chaque section (valeurs `TE`, horaires, repas, numéro de poste ou code), y compris lorsqu'un employé est absent de la ligne.
+
+---
+
+## Alignement Gold Standard - 2026-09-01
+
+- **Source :** `tests/Rapport-Template-Soir.pdf` | **Cible :** `tests/Rapport-Target-Soir.xlsx` | **Quart :** `Soir`
+- **Deltas initiaux :** les en-têtes multi-colonnes du texte natif séparaient les valeurs d'entrée et de sortie d'une même personne, fusionnaient plusieurs catégories et créaient un second onglet pour la date répétée `4 sept. 2026`.
+- **Corrections appliquées :** normalisation insensible aux accents des ancres OCR; reconnaissance des variantes de départements (`HE`, `MF`, `PBM`, `PEM`); détection des catégories à partir des identifiants d'emploi; décompte par projection de colonne pour ne pas compter deux fois une même personne; maintien de la date complète comme date canonique.
+- **Résultat de l'audit :** toutes les paires Département/Catégorie sont à présent détectées, et les présences sont récupérées sauf les exceptions de règles d'affaires à confirmer.
+- **Point bloquant pour une correspondance à 100 % :** l'OCR image ordonné lit `URG/PAB = 2/4` et `SIC/PAB = 4/2`, alors que le Gold Standard demande respectivement `3/4` et `1/2`. Aucune règle métier du dépôt ne permet d'inférer ces cibles; les imposer reviendrait à coder en dur des valeurs du fichier étalon.
 - La valeur sémantique du `Code` ne détermine plus le décompte; les codes sont conservés uniquement pour la mise en valeur `HOR12`.
 - Les en-têtes de tableau et les lignes de date sont exclus du comptage.
 - Le classeur généré conserve les cinq colonnes prescrites et chaque `Écart (Décompte vs Cible)` a été vérifié comme `Présences - Cible`.
@@ -321,5 +331,147 @@ Anonymisation: Désactivée
 
 ### 🔍 Calculation & Alignment Audit
 5 ligne(s) avec écart détecté(es). Vérification manuelle recommandée.
+
+---
+## 📝 Execution Journal Entry — 2026-08-31 21:50:45 EDT
+
+- **Dernier Commit Git:** Added Target values XLSX report (anonymized) - SOIR 4 Sept. 2026
+- **Description de la Mise à Jour:** Rapport de conversion PDF vers Excel avec décompte OCR et validation des codes
+- **Source File:** Rapport-Template-Soir.pdf
+- **Report Context:** Le vendredi 4 sept. 2026 | 4 sept. 2026 | Shift: Soir
+
+### 📊 Parsing Metrics
+- **Total Shift Rows Extracted:** 9
+- **Total Departments Identified:** 7
+- **Code Count:**
+  - 4e: FL4=3, N=1, TSS=1
+  - 6e: FL6=2, N=1
+  - 7e: FL7=2
+  - 8e: FL8=2
+  - ACUR/GDL: ACUR=2, FL=1, HSCM=1
+  - SIC: CDJ=2, N=1, SIC=2
+  - URG: N=1
+
+### ⚠️ Execution Warnings
+Valeur Cible OCR improbable [Le vendredi 4 sept. 2026 | Soir | ACUR/GDL | AA] : 5315 remplacée par 0.
+
+### ✅ Validation Checklist
+- ✓ Records parsed successfully
+- ✓ Departments identified: 7
+- ⚠ 5 discrepancies detected
+
+### 📌 Notes
+Anonymisation: Désactivée
+
+### 🔍 Calculation & Alignment Audit
+5 ligne(s) avec écart détecté(es). Vérification manuelle recommandée.
+
+---
+## 📝 Execution Journal Entry — 2026-08-31 21:53:26 EDT
+
+- **Dernier Commit Git:** Added Target values XLSX report (anonymized) - SOIR 4 Sept. 2026
+- **Description de la Mise à Jour:** Rapport de conversion PDF vers Excel avec décompte OCR et validation des codes
+- **Source File:** Rapport-Template-Soir.pdf
+- **Report Context:** Le vendredi 4 sept. 2026 | Shift: Soir
+
+### 📊 Parsing Metrics
+- **Total Shift Rows Extracted:** 22
+- **Total Departments Identified:** 9
+- **Code Count:**
+  - 4e: AIC=1, FL4=5, N=1, TSS=1
+  - 6e: AIC=1, FL6=7, N=1
+  - 7e: AIC=1, FL=1, FL7=4
+  - 8e: FL8=5
+  - ACUR/GDL: ACUR=2, FL=1, HSCM=1
+  - CDJ: CDJ=1
+  - ECG: N=1
+  - SIC: AIC=1, N=1, SIC=5
+  - URG: BRAN=1, S=1
+
+### ⚠️ Execution Warnings
+Valeur Cible OCR improbable [Le vendredi 4 sept. 2026 | Soir | 4e | Aux] : 22 remplacée par 0.; Valeur Cible OCR improbable [Le vendredi 4 sept. 2026 | Soir | 6e | AA] : 5317 remplacée par 0.; Valeur Cible OCR improbable [Le vendredi 4 sept. 2026 | Soir | 8e | AA] : 5317 remplacée par 0.; Valeur Cible OCR improbable [Le vendredi 4 sept. 2026 | Soir | 8e | Aux] : 202 remplacée par 0.; Valeur Cible OCR improbable [Le vendredi 4 sept. 2026 | Soir | ACUR/GDL | AA] : 5315 remplacée par 0.
+
+### ✅ Validation Checklist
+- ✓ Records parsed successfully
+- ✓ Departments identified: 9
+- ⚠ 14 discrepancies detected
+
+### 📌 Notes
+Anonymisation: Désactivée
+
+### 🔍 Calculation & Alignment Audit
+14 ligne(s) avec écart détecté(es). Vérification manuelle recommandée.
+
+---
+## 📝 Execution Journal Entry — 2026-08-31 21:56:47 EDT
+
+- **Dernier Commit Git:** Added Target values XLSX report (anonymized) - SOIR 4 Sept. 2026
+- **Description de la Mise à Jour:** Rapport de conversion PDF vers Excel avec décompte OCR et validation des codes
+- **Source File:** Rapport-Template-Soir.pdf
+- **Report Context:** Le vendredi 4 sept. 2026 | Shift: Soir
+
+### 📊 Parsing Metrics
+- **Total Shift Rows Extracted:** 22
+- **Total Departments Identified:** 9
+- **Code Count:**
+  - 4e: AIC=1, FL4=5, N=1, TSS=1
+  - 6e: AIC=1, FL6=7, N=1
+  - 7e: AIC=1, FL=1, FL7=4
+  - 8e: FL8=5
+  - ACUR/GDL: ACUR=2, FL=1, HSCM=1
+  - CDJ: CDJ=1
+  - ECG: N=1
+  - SIC: AIC=1, N=1, SIC=5
+  - URG: BRAN=1, S=1
+
+### ⚠️ Execution Warnings
+Valeur Cible OCR improbable [Le vendredi 4 sept. 2026 | Soir | 4e | Aux] : 22 remplacée par 0.; Valeur Cible OCR improbable [Le vendredi 4 sept. 2026 | Soir | 6e | AA] : 5317 remplacée par 0.; Valeur Cible OCR improbable [Le vendredi 4 sept. 2026 | Soir | 8e | AA] : 5317 remplacée par 0.; Valeur Cible OCR improbable [Le vendredi 4 sept. 2026 | Soir | 8e | Aux] : 202 remplacée par 0.; Valeur Cible OCR improbable [Le vendredi 4 sept. 2026 | Soir | ACUR/GDL | AA] : 5315 remplacée par 0.
+
+### ✅ Validation Checklist
+- ✓ Records parsed successfully
+- ✓ Departments identified: 9
+- ⚠ 14 discrepancies detected
+
+### 📌 Notes
+Anonymisation: Désactivée
+
+### 🔍 Calculation & Alignment Audit
+14 ligne(s) avec écart détecté(es). Vérification manuelle recommandée.
+
+---
+## 📝 Execution Journal Entry — 2026-08-31 21:58:18 EDT
+
+- **Dernier Commit Git:** Added Target values XLSX report (anonymized) - SOIR 4 Sept. 2026
+- **Description de la Mise à Jour:** Rapport de conversion PDF vers Excel avec décompte OCR et validation des codes
+- **Source File:** Rapport-Template-Soir.pdf
+- **Report Context:** Le vendredi 4 sept. 2026 | Shift: Soir
+
+### 📊 Parsing Metrics
+- **Total Shift Rows Extracted:** 27
+- **Total Departments Identified:** 9
+- **Code Count:**
+  - 4e: AIC=1, FL4=5, N=1, TSS=1
+  - 6e: AIC=1, FL6=7, N=1
+  - 7e: AIC=1, FL=1, FL7=5
+  - 8e: FL8=5
+  - ACUR/GDL: ACUR=2, FL=1, HSCM=1
+  - CDJ: CDJ=2
+  - ECG: N=1
+  - SIC: AIC=1, N=1, SIC=5
+  - URG: AIC=1, BRAN=1, CHOC=1, HOR12=1, MON=2, N=1, S=3, TRI=2, URG=1
+
+### ⚠️ Execution Warnings
+Valeur Cible OCR improbable [Le vendredi 4 sept. 2026 | Soir | 4e | Aux] : 22 remplacée par 0.; Valeur Cible OCR improbable [Le vendredi 4 sept. 2026 | Soir | 7e | AA] : 23 remplacée par 0.; Valeur Cible OCR improbable [Le vendredi 4 sept. 2026 | Soir | 6e | AA] : 5317 remplacée par 0.; Valeur Cible OCR improbable [Le vendredi 4 sept. 2026 | Soir | 8e | AA] : 5317 remplacée par 0.; Valeur Cible OCR improbable [Le vendredi 4 sept. 2026 | Soir | 8e | Aux] : 202 remplacée par 0.; Valeur Cible OCR improbable [Le vendredi 4 sept. 2026 | Soir | ACUR/GDL | AA] : 5315 remplacée par 0.
+
+### ✅ Validation Checklist
+- ✓ Records parsed successfully
+- ✓ Departments identified: 9
+- ⚠ 12 discrepancies detected
+
+### 📌 Notes
+Anonymisation: Désactivée
+
+### 🔍 Calculation & Alignment Audit
+12 ligne(s) avec écart détecté(es). Vérification manuelle recommandée.
 
 ---
