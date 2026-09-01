@@ -233,6 +233,18 @@ Anonymisation: Désactivée
 
 ---
 
+## Validation du décompte des présences par lignes physiques - 2026-09-01
+
+- **Rapport exécuté :** `tests/Rapport-Template-Soir.pdf` | **Quart :** `Soir`
+- Le rapport contient des identifiants d'employés et a été validé comme cas non anonymisé disponible dans le dépôt.
+- `Présences` est désormais le nombre de lignes de données structurées dans chaque section (valeurs `TE`, horaires, repas, numéro de poste ou code), y compris lorsqu'un employé est absent de la ligne.
+- La valeur sémantique du `Code` ne détermine plus le décompte; les codes sont conservés uniquement pour la mise en valeur `HOR12`.
+- Les en-têtes de tableau et les lignes de date sont exclus du comptage.
+- Le classeur généré conserve les cinq colonnes prescrites et chaque `Écart (Décompte vs Cible)` a été vérifié comme `Présences - Cible`.
+- Aucun rapport anonymisé distinct n'est versionné dans le dépôt; la validation complémentaire nécessitera un PDF anonymisé fourni ultérieurement.
+
+---
+
 ## Validation de la structure Cible / Présences / Écart - 2026-08-31
 
 - **Source validée :** `tests/Rapport-Template-Soir.pdf` | **Quart :** `Soir`
@@ -241,5 +253,73 @@ Anonymisation: Désactivée
 - La colonne redondante `Écart (Présences vs Cible)` est absente du classeur.
 - Les cibles AA Soir ont été validées contre la grille de référence : `4e=1`, `7e=1`, `6e=1`, `8e=1`, `SIC=0`, `CDJ=0`, `URG=2`, `ECG=0`, `ACUR/GDL=2`.
 - Les présences proviennent du décompte des codes reconnus; chaque écart est calculé par `Présences - Cible`.
+
+---
+## 📝 Execution Journal Entry — 2026-08-31 20:58:19 EDT
+
+- **Dernier Commit Git:** Update: Optimization of the count
+- **Description de la Mise à Jour:** Rapport de conversion PDF vers Excel avec décompte OCR et validation des codes
+- **Source File:** Rapport-Template-Soir.pdf
+- **Report Context:** Le vendredi 4 sept. 2026 | 4 sept. 2026 | Shift: Soir
+
+### 📊 Parsing Metrics
+- **Total Shift Rows Extracted:** 9
+- **Total Departments Identified:** 7
+- **Code Count:**
+  - 4e: FL4=3, N=1, TSS=1
+  - 6e: FL6=2, N=1
+  - 7e: FL7=2
+  - 8e: FL8=2
+  - ACUR/GDL: ACUR=2, FL=1, HSCM=1
+  - SIC: CDJ=2, N=1, SIC=2
+  - URG: N=1
+
+### ⚠️ Execution Warnings
+Valeur Cible OCR improbable [Le vendredi 4 sept. 2026 | Soir | ACUR/GDL | AA] : 5315 remplacée par 0.
+
+### ✅ Validation Checklist
+- ✓ Records parsed successfully
+- ✓ Departments identified: 7
+- ⚠ 6 discrepancies detected
+
+### 📌 Notes
+Anonymisation: Désactivée
+
+### 🔍 Calculation & Alignment Audit
+6 ligne(s) avec écart détecté(es). Vérification manuelle recommandée.
+
+---
+## 📝 Execution Journal Entry — 2026-08-31 21:00:01 EDT
+
+- **Dernier Commit Git:** Update: Optimization of the count
+- **Description de la Mise à Jour:** Rapport de conversion PDF vers Excel avec décompte OCR et validation des codes
+- **Source File:** Rapport-Template-Soir.pdf
+- **Report Context:** Le vendredi 4 sept. 2026 | 4 sept. 2026 | Shift: Soir
+
+### 📊 Parsing Metrics
+- **Total Shift Rows Extracted:** 9
+- **Total Departments Identified:** 7
+- **Code Count:**
+  - 4e: FL4=3, N=1, TSS=1
+  - 6e: FL6=2, N=1
+  - 7e: FL7=2
+  - 8e: FL8=2
+  - ACUR/GDL: ACUR=2, FL=1, HSCM=1
+  - SIC: CDJ=2, N=1, SIC=2
+  - URG: N=1
+
+### ⚠️ Execution Warnings
+Valeur Cible OCR improbable [Le vendredi 4 sept. 2026 | Soir | ACUR/GDL | AA] : 5315 remplacée par 0.
+
+### ✅ Validation Checklist
+- ✓ Records parsed successfully
+- ✓ Departments identified: 7
+- ⚠ 5 discrepancies detected
+
+### 📌 Notes
+Anonymisation: Désactivée
+
+### 🔍 Calculation & Alignment Audit
+5 ligne(s) avec écart détecté(es). Vérification manuelle recommandée.
 
 ---

@@ -6,10 +6,17 @@ from backend.core.workforce_pipeline import build_workforce_workbook, parse_rati
 
 REPORT_TEXT = """Le vendredi 4 sept. 2026
 HF Urgence
-Infirmière 1/1 URG
+Infirmière 1/1
+8911 16:15 23:30 00:45 301768 URG
 HF Unité de Médecine - 4e étage
-Infirmière 3/4 N S J TS1.5
-Agent Adm 1-2-3-4 ACUR HSCM
+Infirmière 3/4
+8914 15:15 23:30 00:45 309079 N
+8489 16:15 23:30 00:45 305792 S
+2490 15:15 23:30 00:45 309931 J
+8912 15:15 23:30 00:45 309932 TS1.5
+Agent Adm 1-2-3-4
+5317 15:30 23:30 01:00 309084 ACUR
+5317 15:45 23:45 01:00 309085 HSCM
 """
 
 
@@ -25,14 +32,48 @@ def test_parse_report_applies_shift_exception_and_validates_codes():
     assert records[2]["Présences"] == 2
 
 
+def test_presence_counts_structured_rows_without_using_employment_codes():
+    text = """Le vendredi 4 sept. 2026
+HF Urgence
+Infirmière Ratio/Présences 3/3
+Employé TE Entrée Sortie Repas Code repas No. poste Code
+8911 16:15 23:30 00:45 301768 INCONNU
+16:15 23:30 00:45 304776
+8914 15:15 23:30 00:45 308749 TRI
+"""
+
+    record = parse_workforce_text(text, "Soir")[0]
+
+    assert record["Présences"] == 3
+    assert record["Décompte des lignes"] == 3
+    assert record["Codes"] == ["TRI"]
+
+
+def test_presence_ignores_table_headers_and_dates():
+    text = """Le vendredi 4 sept. 2026
+HF Urgence
+Infirmière Ratio/Présences 1/1
+Employé TE Entrée Sortie Repas Code repas No. poste Code
+Le vendredi 4 sept. 2026
+8911 16:15 23:30 00:45 301768 TRI
+"""
+
+    record = parse_workforce_text(text, "Soir")[0]
+
+    assert record["Présences"] == 1
+
+
 def test_missing_aa_ratio_uses_shift_department_grid_and_preserves_explicit_target():
     text = """Le vendredi 4 sept. 2026
 HF Unité de Médecine - 4e étage
-Agent Adm 1-2-3-4 FL4
+Agent Adm 1-2-3-4
+5317 15:30 23:30 01:00 309084 FL4
 HF Urgence
-Agent Adm 1-2-3-4 URG
+Agent Adm 1-2-3-4
+5317 15:30 23:30 01:00 309085 URG
 HF Accueil et réception
-Agent Adm 1-2-3-4 7/1 ACUR
+Agent Adm 1-2-3-4 7/1
+5317 15:30 23:30 01:00 309086 ACUR
 """
 
     records = parse_workforce_text(text, "Soir")
@@ -61,8 +102,8 @@ def test_workbook_contains_shift_date_and_formatted_rows():
     assert sheet.freeze_panes == "A5"
 
 
-def test_ratio_mismatch_uses_counted_codes_and_reports_warning():
-    text = "Le vendredi 4 sept. 2026\nHF Urgence\nInfirmière 2/1 URG N"
+def test_ratio_mismatch_uses_counted_rows_and_reports_warning():
+    text = "Le vendredi 4 sept. 2026\nHF Urgence\nInfirmière 2/1\n8911 16:15 23:30 00:45 301768 URG\n8471 16:15 23:30 00:45 304776 N"
 
     warnings = []
     records = parse_workforce_text(text, "Nuit", warnings)
@@ -74,7 +115,7 @@ def test_ratio_mismatch_uses_counted_codes_and_reports_warning():
     assert sheet.cell(urg_row, 4).value == 2
     assert warnings == [
         "Écart détecté [Le vendredi 4 sept. 2026 | Nuit | URG | Inf] : "
-        "Présences indiquées = 1, Codes comptés = 2. "
+        "Présences indiquées = 1, Lignes comptées = 2. "
         "La valeur 2 a été retenue pour le fichier Excel."
     ]
 
@@ -82,7 +123,8 @@ def test_ratio_mismatch_uses_counted_codes_and_reports_warning():
 def test_anonymized_report_keeps_rows_with_flexible_department_header():
     text = """Le vendredi 4 sept. 2026
 HF Unité de Médecine 4e étage
-Infirmière Ratio/Présences 1 TE N
+Infirmière Ratio/Présences 1
+15:15 23:30 00:45 309079 N
 """
 
     records = parse_workforce_text(text, "Nuit")
@@ -179,17 +221,23 @@ def test_audit_tab_records_execution_summary_and_ocr_flags():
 def test_business_rules_remap_sic_count_dvers_and_apply_aa_night_target():
     text = """Le lundi 7 sept. 2026
 HF Soins intensifs coronariens
-Infirmière 1/1 SIC
+Infirmière 1/1
+8911 16:15 23:30 00:45 301768 SIC
 HF Soins intensifs coronariens
-Infirmière auxiliaire 1/1 SIC
+Infirmière auxiliaire 1/1
+3455 16:15 23:30 00:45 301769 SIC
 HF Soins intensifs coronariens
-Infirmière 1/1 SIC
+Infirmière 1/1
+8912 16:15 23:30 00:45 301770 SIC
 HF Soins intensifs coronariens
-Infirmière auxiliaire 1/1 SIC
+Infirmière auxiliaire 1/1
+3455 16:15 23:30 00:45 301771 SIC
 HF Urgence
-Infirmière auxiliaire 2/2 DVERS
+Infirmière auxiliaire 2/2
+3455 16:15 23:30 00:45 301772 DVERS
 HF Accueil et réception
-Agent Adm 1-2-3-4 ACUR
+Agent Adm 1-2-3-4
+5317 15:30 23:30 01:00 309084 ACUR
 """
 
     records = parse_workforce_text(text, "Nuit")

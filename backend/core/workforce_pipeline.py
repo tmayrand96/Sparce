@@ -22,7 +22,7 @@ SHIFT_OPTIONS = ("Nuit", "Soir", "Jour")
 VALID_CODES = (
     "N", "S", "J", "TS1.5", "TSS", "TSN", "AIC", "SIC", "FL4", "FL7",
     "FL6", "FL8", "TSTD", "MON", "CHOC", "TRI", "EVAL", "URG", "ETJ",
-    "ETS", "ETN", "BRAN", "ACUR", "HSCM", "DVERS", "CDJ", "FL", "HJT",
+    "ETS", "ETN", "BRAN", "ACUR", "HSCM", "DVERS", "CDJ", "FL", "HJT", "HOR12",
 )
 OVERTIME_CODES = {"TS1.5", "TSS", "TSN", "TSTD"}
 LOGGER = logging.getLogger(__name__)
@@ -155,6 +155,30 @@ def _codes_for_department(block: str, department: str) -> list[str]:
     return codes
 
 
+STRUCTURAL_VALUE_PATTERN = re.compile(
+    r"\b(?:\d{1,2}:\d{2}|\d{4,}|[A-Za-z]{1,3}\d{2,})\b",
+    re.IGNORECASE,
+)
+STRUCTURAL_HEADER_PATTERN = re.compile(
+    r"\b(?:employ[ée]?|te|entr[ée]e|sortie|repas|code\s+repas|no\.?\s*poste|code)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_physical_staff_row(line: str) -> bool:
+    """Return whether an extracted line contains a staff-table value, not a header."""
+    if _date_phrases(line):
+        return False
+    return bool(STRUCTURAL_VALUE_PATTERN.search(line)) and not bool(
+        STRUCTURAL_HEADER_PATTERN.fullmatch(line.strip())
+    )
+
+
+def _count_physical_staff_rows(lines: Iterable[str]) -> int:
+    """Count data rows from table structure without using the employment code value."""
+    return sum(_is_physical_staff_row(line) for line in lines)
+
+
 def _target_for(category: str, department: str, shift: str, explicit_target: int | None) -> int:
     """Prefer an explicit PDF target; otherwise use the AA reference grid."""
     if explicit_target is not None:
@@ -216,13 +240,14 @@ def parse_workforce_text(
         if current_department is None:
             raise _error(report_date, shift, category, category, "Département introuvable")
 
-        block = line
+        block_lines = [line]
         for following in lines[index + 1:]:
             if _find_department(following) or _find_label(following, CATEGORY_PATTERNS):
                 break
-            block += " " + following
+            block_lines.append(following)
+        block = " ".join(block_lines)
         codes = _codes_for_department(block, current_department)
-        presence = len(codes)
+        presence = _count_physical_staff_rows(block_lines[1:])
         # Apply business rule: ignore ratios on lines that contain both date and department
         if _has_date_and_department_on_line(line):
             target, stated_presence = None, None
@@ -241,7 +266,7 @@ def parse_workforce_text(
             if stated_presence is not None and stated_presence != presence:
                 warning = (
                     f"Écart détecté [{current_date} | {shift} | {current_department} | {category}] : "
-                    f"Présences indiquées = {stated_presence}, Codes comptés = {presence}. "
+                    f"Présences indiquées = {stated_presence}, Lignes comptées = {presence}. "
                     f"La valeur {presence} a été retenue pour le fichier Excel."
                 )
                 LOGGER.warning(warning)
@@ -255,7 +280,7 @@ def parse_workforce_text(
             suffix = f"-{target - presence}"
         else:
             suffix = ""
-        records.append({"Département": current_department, "Catégorie": category, "Cible": target, "Présences": presence, "Décompte des codes": len(codes), "Écart": suffix, "Codes": codes, "Date": current_date})
+        records.append({"Département": current_department, "Catégorie": category, "Cible": target, "Présences": presence, "Décompte des lignes": presence, "Écart": suffix, "Codes": codes, "Date": current_date})
     if not records:
         raise WorkforceReportError(f"Aucune catégorie d'effectif trouvée | Date: {report_date} | Quart: {shift} | Catégorie d'emploi: inconnue | Code d'emploi: inconnu")
     return records
@@ -279,7 +304,7 @@ def _complete_date_skeleton(
                     "Catégorie": category,
                     "Cible": _target_for(category, department, shift, None),
                     "Présences": 0,
-                    "Décompte des codes": 0,
+                    "Décompte des lignes": 0,
                     "Écart": "",
                     "Codes": [],
                     "Date": date,
@@ -352,12 +377,9 @@ def build_workforce_workbook(
                     "Catégorie": record.get("Catégorie", ""),
                     "Cible": record.get("Cible", 0),
                     "Présences": record.get("Présences", 0),
-                    "_code_count": record.get(
-                        "Décompte des codes", len(record.get("Codes", []) or [])
-                    ),
                     "_codes": record.get("Codes", []),  # Track codes for HOR12 detection
                 })
-            dataframe = pd.DataFrame(rows, columns=(*headers[:4], "_code_count", "_codes")).fillna(
+            dataframe = pd.DataFrame(rows, columns=(*headers[:4], "_codes")).fillna(
                 {"Cible": 0, "Présences": 0}
             )
             dataframe["Cible"] = pd.to_numeric(dataframe["Cible"], errors="coerce").fillna(0)
@@ -375,7 +397,6 @@ def build_workforce_workbook(
                 by=["Département", "_category_order"], kind="stable", na_position="last"
             ).reset_index(drop=True)
             dataframe = dataframe.drop(columns=["_category_order"], errors="ignore")
-            dataframe.pop("_code_count")
             codes_list = dataframe.pop("_codes")
             dataframe["Écart (Décompte vs Cible)"] = dataframe["Présences"] - dataframe["Cible"]
             
