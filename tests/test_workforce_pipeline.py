@@ -2,6 +2,7 @@ from io import BytesIO
 from openpyxl import load_workbook
 
 from backend.core.workforce_pipeline import build_workforce_workbook, parse_ratio, parse_workforce_text
+from src.utils.journal_logger import log_execution_entry
 
 
 REPORT_TEXT = """Le vendredi 4 sept. 2026
@@ -256,3 +257,55 @@ Agent Adm 1-2-3-4
     assert sheet.cell(acur_row, 3).value == 1
     assert sheet.cell(acur_row, 4).value == 1
     assert sheet.cell(acur_row, 5).value == 0
+
+
+def test_acur_gdl_keeps_only_aa_and_recounts_high_presence():
+    aa_rows = "\n".join(
+        f"5317 15:30 23:30 01:00 3090{index:02d} ACUR"
+        for index in range(1, 7)
+    )
+    text = f"""Le lundi 7 sept. 2026
+HF Accueil et réception
+Infirmière 4/4
+8911 15:30 23:30 01:00 301768 N
+Infirmière auxiliaire 3/3
+3455 15:30 23:30 01:00 301769 N
+Préposé aux bénéficiaires 2/2
+3480 15:30 23:30 01:00 301770 N
+Agent Adm 1-2-3-4 2/9
+{aa_rows}
+"""
+
+    warnings = []
+    records = parse_workforce_text(text, "Soir", warnings)
+    acur_records = {record["Catégorie"]: record for record in records if record["Département"] == "ACUR/GDL"}
+    workbook = load_workbook(BytesIO(build_workforce_workbook(records, "Soir", warnings).getvalue()))
+    sheet = workbook["Le lundi 7 sept. 2026"]
+
+    assert [(acur_records[category]["Cible"], acur_records[category]["Présences"])
+            for category in ("Inf", "Aux", "PAB")] == [(0, 0), (0, 0), (0, 0)]
+    assert acur_records["AA"]["Cible"] == 2
+    assert acur_records["AA"]["Présences"] == 6
+    assert "Décompte élevé détecté pour AA dans ACUR/GDL (>5). Vérification de sécurité déclenchée." in warnings
+    for category in ("Inf", "Aux", "PAB"):
+        row = next(
+            row for row in range(5, sheet.max_row + 1)
+            if sheet.cell(row, 1).value == "ACUR/GDL" and sheet.cell(row, 2).value == category
+        )
+        assert (sheet.cell(row, 3).value, sheet.cell(row, 4).value) == (0, 0)
+
+
+def test_high_acur_gdl_aa_warning_is_written_to_execution_journal(tmp_path):
+    warning = "Décompte élevé détecté pour AA dans ACUR/GDL (>5). Vérification de sécurité déclenchée."
+
+    journal = log_execution_entry(
+        source_file="Rapport-Template-Soir.pdf",
+        anonymized=False,
+        report_date="Le lundi 7 sept. 2026",
+        shift="Soir",
+        records=[],
+        warnings=[warning],
+        journal_path=tmp_path / "task_journal.md",
+    )
+
+    assert "### ⚠️ Execution Warnings\n" + warning in journal

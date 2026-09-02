@@ -240,6 +240,23 @@ def _count_physical_staff_rows(lines: Iterable[str]) -> int:
     return len(data_rows)
 
 
+def _recount_acur_gdl_aa_rows(lines: Iterable[str]) -> int:
+    """Count only physical administrative rows in one ACUR/GDL AA block."""
+    return sum(
+        _is_physical_staff_row(line) and _category_from_staff_row(line) == "AA"
+        for line in lines
+    )
+
+
+def _apply_acur_gdl_category_rule(
+    department: str, category: str, target: int, presence: int
+) -> tuple[int, int]:
+    """Keep ACUR/GDL data exclusively in the AA category."""
+    if department == "ACUR/GDL" and category in {"Inf", "Aux", "PAB"}:
+        return 0, 0
+    return target, presence
+
+
 def _target_for(category: str, department: str, shift: str, explicit_target: int | None) -> int:
     """Prefer an explicit PDF target; otherwise use the AA reference grid."""
     if explicit_target is not None:
@@ -340,7 +357,11 @@ def parse_workforce_text(
                 if warnings is not None:
                     warnings.append(warning)
                 target = None
-            if stated_presence is not None and stated_presence != presence:
+            if (
+                stated_presence is not None
+                and stated_presence != presence
+                and not (current_department == "ACUR/GDL" and category in {"Inf", "Aux", "PAB"})
+            ):
                 warning = (
                     f"Écart détecté [{current_date} | {shift} | {current_department} | {category}] : "
                     f"Présences indiquées = {stated_presence}, Lignes comptées = {presence}. "
@@ -353,6 +374,18 @@ def parse_workforce_text(
             target = presence
         else:
             target = _target_for(category, current_department, shift, target)
+        if current_department == "ACUR/GDL" and category == "AA" and presence > 5:
+            warning = (
+                "Décompte élevé détecté pour AA dans ACUR/GDL (>5). "
+                "Vérification de sécurité déclenchée."
+            )
+            LOGGER.warning(warning)
+            if warnings is not None:
+                warnings.append(warning)
+            presence = _recount_acur_gdl_aa_rows(block_lines[1:])
+        target, presence = _apply_acur_gdl_category_rule(
+            current_department, category, target, presence
+        )
         extra_codes = codes[target:] if presence > target else []
         if presence > target:
             suffix = f"+{presence - target}TS" if any(code in OVERTIME_CODES for code in extra_codes) else f"+{presence - target}R"
@@ -382,7 +415,9 @@ def _complete_date_skeleton(
                 {
                     "Département": department,
                     "Catégorie": category,
-                    "Cible": _target_for(category, department, shift, None),
+                    "Cible": _apply_acur_gdl_category_rule(
+                        department, category, _target_for(category, department, shift, None), 0
+                    )[0],
                     "Présences": 0,
                     "Décompte des lignes": 0,
                     "Écart": "",
@@ -452,11 +487,17 @@ def build_workforce_workbook(
         for report_date, date_records in records_by_date.items():
             rows = []
             for idx, record in enumerate(date_records):
+                target, presence = _apply_acur_gdl_category_rule(
+                    record.get("Département", ""),
+                    record.get("Catégorie", ""),
+                    record.get("Cible", 0),
+                    record.get("Présences", 0),
+                )
                 rows.append({
                     "Département": record.get("Département", ""),
                     "Catégorie": record.get("Catégorie", ""),
-                    "Cible": record.get("Cible", 0),
-                    "Présences": record.get("Présences", 0),
+                    "Cible": target,
+                    "Présences": presence,
                     "_codes": record.get("Codes", []),  # Track codes for HOR12 detection
                 })
             dataframe = pd.DataFrame(rows, columns=(*headers[:4], "_codes")).fillna(
