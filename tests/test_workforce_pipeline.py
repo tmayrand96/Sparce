@@ -82,7 +82,7 @@ Agent Adm 1-2-3-4 7/1
     assert [(record["Département"], record["Cible"], record["Présences"]) for record in records] == [
         ("4e", 1, 1),
         ("URG", 2, 1),
-        ("ACUR/GDL", 1, 1),
+        ("ACUR/GDL", 2, 1),
     ]
 
 
@@ -274,7 +274,7 @@ Agent Adm 1-2-3-4 2/9
 
     assert [(acur_records[category]["Cible"], acur_records[category]["Présences"])
             for category in ("Inf", "Aux", "PAB")] == [(0, 0), (0, 0), (0, 0)]
-    assert acur_records["AA"]["Cible"] == 1
+    assert acur_records["AA"]["Cible"] == 2
     assert acur_records["AA"]["Présences"] == 6
     assert "Décompte élevé détecté pour AA dans ACUR/GDL (>5). Vérification de sécurité déclenchée." in warnings
     for category in ("Inf", "Aux", "PAB"):
@@ -318,7 +318,7 @@ def test_workbook_evening_targets_match_reference_matrix():
     expected = {
         "4e": (3, 2, 2, 1), "7e": (3, 1, 2, 1), "6e": (3, 2, 2, 1),
         "8e": (3, 2, 2, 1), "SIC": (4, 0, 1, 0), "CDJ": (1, 1, 0, 0),
-        "URG": (9, 1, 3, 2), "ECG": (0, 0, 1, 0), "ACUR/GDL": (0, 0, 0, 1),
+        "URG": (9, 1, 3, 2), "ECG": (0, 0, 1, 0), "ACUR/GDL": (0, 0, 0, 2),
     }
 
     assert actual == {
