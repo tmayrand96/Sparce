@@ -1,7 +1,7 @@
 from io import BytesIO
 from openpyxl import load_workbook
 
-from backend.core.workforce_pipeline import build_workforce_workbook, parse_ratio, parse_workforce_text
+from backend.core.workforce_pipeline import build_workforce_workbook, parse_workforce_text
 from src.utils.journal_logger import log_execution_entry
 
 
@@ -25,9 +25,9 @@ def test_parse_report_applies_shift_exception_and_validates_codes():
     records = parse_workforce_text(REPORT_TEXT, "Soir")
 
     assert records[0]["Département"] == "URG"
-    assert records[0]["Cible"] == 1
+    assert records[0]["Cible"] == 9
     assert records[0]["Présences"] == 1
-    assert records[0]["Écart"] == ""
+    assert records[0]["Écart"] == "-8"
     assert records[1]["Écart"] == "+1TS"
     assert records[2]["Cible"] == 1
     assert records[2]["Présences"] == 2
@@ -64,7 +64,7 @@ Le vendredi 4 sept. 2026
     assert record["Présences"] == 1
 
 
-def test_missing_aa_ratio_uses_shift_department_grid_and_preserves_explicit_target():
+def test_fixed_targets_ignore_ocr_ratios():
     text = """Le vendredi 4 sept. 2026
 HF Unité de Médecine - 4e étage
 Agent Adm 1-2-3-4
@@ -82,7 +82,7 @@ Agent Adm 1-2-3-4 7/1
     assert [(record["Département"], record["Cible"], record["Présences"]) for record in records] == [
         ("4e", 1, 1),
         ("URG", 2, 1),
-        ("ACUR/GDL", 7, 1),
+        ("ACUR/GDL", 1, 1),
     ]
 
 
@@ -103,7 +103,7 @@ def test_workbook_contains_shift_date_and_formatted_rows():
     assert sheet.freeze_panes == "A5"
 
 
-def test_ratio_mismatch_uses_counted_rows_and_reports_warning():
+def test_presence_uses_counted_rows_without_reading_ocr_ratio():
     text = "Le vendredi 4 sept. 2026\nHF Urgence\nInfirmière 2/1\n8911 16:15 23:30 00:45 301768 URG\n8471 16:15 23:30 00:45 304776 N"
 
     warnings = []
@@ -114,11 +114,7 @@ def test_ratio_mismatch_uses_counted_rows_and_reports_warning():
     assert records[0]["Présences"] == 2
     urg_row = next(row for row in range(5, sheet.max_row + 1) if sheet.cell(row, 1).value == "URG")
     assert sheet.cell(urg_row, 4).value == 2
-    assert warnings == [
-        "Écart détecté [Le vendredi 4 sept. 2026 | Nuit | URG | Inf] : "
-        "Présences indiquées = 1, Lignes comptées = 2. "
-        "La valeur 2 a été retenue pour le fichier Excel."
-    ]
+    assert warnings == []
 
 
 def test_anonymized_report_keeps_rows_with_flexible_department_header():
@@ -135,12 +131,6 @@ Infirmière Ratio/Présences 1
     assert records[0]["Codes"] == ["N"]
 
 
-def test_parse_ratio_accepts_complete_partial_and_missing_values():
-    assert parse_ratio("Ratio/Présences 3/3") == (3, 3)
-    assert parse_ratio("Ratio/Présences 1") == (1, None)
-    assert parse_ratio("Ratio/Présences/") == (None, None)
-
-
 def test_workbook_defaults_missing_target_and_presence_to_zero():
     workbook = build_workforce_workbook(
         [{"Département": "URG", "Catégorie": "Inf", "Date": "Le 4 sept. 2026"}],
@@ -153,10 +143,10 @@ def test_workbook_defaults_missing_target_and_presence_to_zero():
         row for row in range(5, sheet.max_row + 1)
         if sheet.cell(row, 1).value == "URG" and sheet.cell(row, 2).value == "Inf"
     )
-    assert sheet.cell(urg_inf_row, 3).value == 0
+    assert sheet.cell(urg_inf_row, 3).value == 7
     assert sheet.cell(urg_inf_row, 4).value == 0
-    assert sheet.cell(urg_inf_row, 5).value == 0
-    assert sheet.cell(urg_inf_row, 5).fill.fgColor.rgb != "00FFC7CE"
+    assert sheet.cell(urg_inf_row, 5).value == -7
+    assert sheet.cell(urg_inf_row, 5).fill.fgColor.rgb == "00FFC7CE"
 
 
 def test_workbook_uses_one_sheet_per_report_date():
@@ -214,9 +204,9 @@ def test_audit_tab_records_execution_summary_and_ocr_flags():
     assert workbook.sheetnames[0] == "Rapport_Audit"
     assert audit["A1"].value == "Rapport d'audit d'exécution"
     assert audit["A5"].value == "Le lundi 7 sept. 2026"
-    assert audit["B5"].value == 2
-    assert audit["E5"].value == 2
-    assert audit["A8"].value == warnings[0]
+    assert audit["B5"].value == 37
+    assert audit["E5"].value == 0
+    assert audit["A7"].value == "Journal des anomalies"
 
 
 def test_business_rules_remap_sic_count_dvers_and_apply_aa_night_target():
@@ -249,7 +239,7 @@ Agent Adm 1-2-3-4
 
     assert [record["Département"] for record in sic_records] == ["SIC", "SIC", "CDJ", "CDJ"]
     assert urg_aux["Présences"] == 1
-    assert urg_aux["Cible"] == 2
+    assert urg_aux["Cible"] == 1
     acur_row = next(
         row for row in range(5, sheet.max_row + 1)
         if sheet.cell(row, 1).value == "ACUR/GDL" and sheet.cell(row, 2).value == "AA"
@@ -284,7 +274,7 @@ Agent Adm 1-2-3-4 2/9
 
     assert [(acur_records[category]["Cible"], acur_records[category]["Présences"])
             for category in ("Inf", "Aux", "PAB")] == [(0, 0), (0, 0), (0, 0)]
-    assert acur_records["AA"]["Cible"] == 2
+    assert acur_records["AA"]["Cible"] == 1
     assert acur_records["AA"]["Présences"] == 6
     assert "Décompte élevé détecté pour AA dans ACUR/GDL (>5). Vérification de sécurité déclenchée." in warnings
     for category in ("Inf", "Aux", "PAB"):
@@ -309,3 +299,77 @@ def test_high_acur_gdl_aa_warning_is_written_to_execution_journal(tmp_path):
     )
 
     assert "### ⚠️ Execution Warnings\n" + warning in journal
+
+
+def test_workbook_evening_targets_match_reference_matrix():
+    workbook = load_workbook(
+        BytesIO(
+            build_workforce_workbook(
+                [{"Département": "URG", "Catégorie": "Inf", "Date": "Le 7 sept. 2026"}],
+                "Soir",
+            ).getvalue()
+        )
+    )
+    sheet = workbook["Le 7 sept. 2026"]
+    actual = {
+        (sheet.cell(row, 1).value, sheet.cell(row, 2).value): sheet.cell(row, 3).value
+        for row in range(5, sheet.max_row + 1)
+    }
+    expected = {
+        "4e": (3, 2, 2, 1), "7e": (3, 1, 2, 1), "6e": (3, 2, 2, 1),
+        "8e": (3, 2, 2, 1), "SIC": (4, 0, 1, 0), "CDJ": (1, 1, 0, 0),
+        "URG": (9, 1, 3, 2), "ECG": (0, 0, 1, 0), "ACUR/GDL": (0, 0, 0, 1),
+    }
+
+    assert actual == {
+        (department, category): targets[index]
+        for department, targets in expected.items()
+        for index, category in enumerate(("Inf", "Aux", "PAB", "AA"))
+    }
+
+
+def test_sixth_floor_anchor_isolated_from_adjacent_department():
+    text = """Le lundi 7 sept. 2026
+HF Unité de médecine   6e
+Infirmière
+8911 15:30 23:30 01:00 301768 N
+Infirmière auxiliaire
+3455 15:30 23:30 01:00 301769 S
+Préposé aux bénéficiaires
+3480 15:30 23:30 01:00 301770 J
+Agent Adm 1-2-3-4
+5317 15:30 23:30 01:00 301771 FL6
+HF Chirurgie court séjour
+Infirmière
+8912 15:30 23:30 01:00 301772 FL8
+"""
+
+    records = parse_workforce_text(text, "Soir")
+    sixth_floor_records = [record for record in records if record["Département"] == "6e"]
+
+    assert [(record["Catégorie"], record["Cible"], record["Présences"]) for record in sixth_floor_records] == [
+        ("Inf", 3, 1), ("Aux", 2, 1), ("PAB", 2, 1), ("AA", 1, 1)
+    ]
+    assert [(record["Département"], record["Catégorie"]) for record in records[-1:]] == [("8e", "Inf")]
+
+
+def test_urg_inf_hor12_is_excluded_from_presences_and_reported_in_difference():
+    text = """Le lundi 7 sept. 2026
+HF Urgence
+Infirmière
+8911 15:30 23:30 01:00 301768 N
+8912 15:30 23:30 01:00 301769 HOR12
+"""
+
+    records = parse_workforce_text(text, "Soir")
+    record = records[0]
+    sheet = load_workbook(BytesIO(build_workforce_workbook(records, "Soir").getvalue()))[
+        "Le lundi 7 sept. 2026"
+    ]
+    urg_inf_row = next(
+        row for row in range(5, sheet.max_row + 1)
+        if sheet.cell(row, 1).value == "URG" and sheet.cell(row, 2).value == "Inf"
+    )
+
+    assert (record["Cible"], record["Présences"], record["Écart"]) == (9, 1, "-8+HOR12")
+    assert sheet.cell(urg_inf_row, 5).value == "-8+HOR12"

@@ -742,3 +742,147 @@ Anonymisation: Désactivée
 3 ligne(s) avec écart détecté(es). Vérification manuelle recommandée.
 
 ---
+## 📝 Execution Journal Entry — 2026-09-02 15:56:34 EDT
+
+- **Dernier Commit Git:** fix(rules): enforce AA-only for ACUR/GDL and add threshold audit logic
+- **Description de la Mise à Jour:** Rapport de conversion PDF vers Excel avec décompte OCR et validation des codes
+- **Source File:** Rapport-Template-Soir.pdf
+- **Report Context:** Le vendredi 4 sept. 2026 | Shift: Soir
+
+### 📊 Parsing Metrics
+- **Total Shift Rows Extracted:** 27
+- **Total Departments Identified:** 9
+- **Code Count:**
+  - 4e: AIC=1, FL4=5, N=1, TSS=1
+  - 6e: AIC=1, FL6=7, N=1
+  - 7e: AIC=1, FL=1, FL7=5
+  - 8e: FL8=5
+  - ACUR/GDL: ACUR=2, FL=1, HSCM=1
+  - CDJ: CDJ=2
+  - ECG: N=1
+  - SIC: AIC=1, N=1, SIC=5
+  - URG: AIC=1, BRAN=1, CHOC=1, HOR12=1, MON=2, N=1, S=3, TRI=2, URG=1
+
+### ⚠️ Execution Warnings
+Aucun avertissement
+
+### ✅ Validation Checklist
+- ✓ Records parsed successfully
+- ✓ Departments identified: 9
+- ⚠ 9 discrepancies detected
+
+### 📌 Notes
+Anonymisation: Désactivée
+
+### 🔍 Calculation & Alignment Audit
+9 ligne(s) avec écart détecté(es). Vérification manuelle recommandée.
+
+---
+## 📝 Execution Journal Entry — 2026-09-02 15:57:17 EDT
+
+- **Dernier Commit Git:** fix(rules): enforce AA-only for ACUR/GDL and add threshold audit logic
+- **Description de la Mise à Jour:** Rapport de conversion PDF vers Excel avec décompte OCR et validation des codes
+- **Source File:** Rapport-Template-Soir.pdf
+- **Report Context:** Le vendredi 4 sept. 2026 | Shift: Soir
+
+### 📊 Parsing Metrics
+- **Total Shift Rows Extracted:** 27
+- **Total Departments Identified:** 9
+- **Code Count:**
+  - 4e: AIC=1, FL4=5, N=1, TSS=1
+  - 6e: AIC=1, FL6=7, N=1
+  - 7e: AIC=1, FL=1, FL7=5
+  - 8e: FL8=5
+  - ACUR/GDL: ACUR=2, FL=1, HSCM=1
+  - CDJ: CDJ=2
+  - ECG: N=1
+  - SIC: AIC=1, N=1, SIC=5
+  - URG: AIC=1, BRAN=1, CHOC=1, HOR12=1, MON=2, N=1, S=3, TRI=2, URG=1
+
+### ⚠️ Execution Warnings
+Aucun avertissement
+
+### ✅ Validation Checklist
+- ✓ Records parsed successfully
+- ✓ Departments identified: 9
+- ⚠ 9 discrepancies detected
+
+### 📌 Notes
+Anonymisation: Désactivée
+
+### 🔍 Calculation & Alignment Audit
+9 ligne(s) avec écart détecté(es). Vérification manuelle recommandée.
+
+---
+## 📝 Execution Journal Entry — 2026-09-02 16:00:34 EDT
+
+- **Dernier Commit Git:** fix(rules): enforce AA-only for ACUR/GDL and add threshold audit logic
+- **Description de la Mise à Jour:** Rapport de conversion PDF vers Excel avec décompte OCR et validation des codes
+- **Source File:** Rapport-Template-Soir.pdf
+- **Report Context:** Le vendredi 4 sept. 2026 | Shift: Soir
+
+### 📊 Parsing Metrics
+- **Total Shift Rows Extracted:** 27
+- **Total Departments Identified:** 9
+- **Code Count:**
+  - 4e: AIC=1, FL4=5, N=1, TSS=1
+  - 6e: AIC=1, FL6=7, N=1
+  - 7e: AIC=1, FL=1, FL7=5
+  - 8e: FL8=5
+  - ACUR/GDL: ACUR=2, FL=1, HSCM=1
+  - CDJ: CDJ=2
+  - ECG: N=1
+  - SIC: AIC=1, N=1, SIC=5
+  - URG: AIC=1, BRAN=1, CHOC=1, HOR12=1, MON=2, N=1, S=3, TRI=2, URG=1
+
+### ⚠️ Execution Warnings
+t; e; s; t; s; /; o; u; t; p; u; t; _; R; a; p; p; o; r; t; -; T; e; m; p; l; a; t; e; -; S; o; i; r; .; x; l; s; x
+
+### ✅ Validation Checklist
+- ✓ Records parsed successfully
+- ✓ Departments identified: 9
+- ⚠ 9 discrepancies detected
+
+### 📌 Notes
+Anonymisation: Désactivée
+
+### 🔍 Calculation & Alignment Audit
+9 ligne(s) avec écart détecté(es). Vérification manuelle recommandée.
+
+---
+## 📝 Execution Journal Entry — 2026-09-02 16:01:09 EDT
+
+- **Dernier Commit Git:** fix(rules): enforce AA-only for ACUR/GDL and add threshold audit logic
+- **Description de la Mise à Jour:** Rapport de conversion PDF vers Excel avec décompte OCR et validation des codes
+- **Source File:** Rapport-Template-Soir.pdf
+- **Report Context:** Le vendredi 4 sept. 2026 | Shift: Soir
+
+### 📊 Parsing Metrics
+- **Total Shift Rows Extracted:** 27
+- **Total Departments Identified:** 9
+- **Code Count:**
+  - 4e: AIC=1, FL4=5, N=1, TSS=1
+  - 6e: AIC=1, FL6=7, N=1
+  - 7e: AIC=1, FL=1, FL7=5
+  - 8e: FL8=5
+  - ACUR/GDL: ACUR=2, FL=1, HSCM=1
+  - CDJ: CDJ=2
+  - ECG: N=1
+  - SIC: AIC=1, N=1, SIC=5
+  - URG: AIC=1, BRAN=1, CHOC=1, HOR12=1, MON=2, N=1, S=3, TRI=2, URG=1
+
+### ⚠️ Execution Warnings
+t; e; s; t; s; /; o; u; t; p; u; t; _; R; a; p; p; o; r; t; -; T; e; m; p; l; a; t; e; -; S; o; i; r; .; x; l; s; x
+
+### ✅ Validation Checklist
+- ✓ Records parsed successfully
+- ✓ Departments identified: 9
+- ⚠ 9 discrepancies detected
+
+### 📌 Notes
+Anonymisation: Désactivée
+
+### 🔍 Calculation & Alignment Audit
+9 ligne(s) avec écart détecté(es). Vérification manuelle recommandée.
+
+---

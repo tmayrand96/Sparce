@@ -1,0 +1,1 @@
+"""Immutable business configuration for Sparce."""

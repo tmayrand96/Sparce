@@ -15,6 +15,7 @@ from openpyxl.formatting.rule import CellIsRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
+from src.config.target_matrix import TARGET_MATRIX
 from src.utils.journal_logger import log_execution_entry
 
 from .pdf_parser import PDFDocumentParser
@@ -53,11 +54,6 @@ CATEGORY_PATTERNS = (
     ("lafirmière", "Inf"),
     ("Infirmière", "Inf"),
 )
-AA_RATIO_GRID = {
-    "Jour": {"4e": 1, "7e": 1, "6e": 1, "8e": 1, "SIC": 0, "CDJ": 1, "URG": 2, "ECG": 0, "ACUR/GDL": 2},
-    "Soir": {"4e": 1, "7e": 1, "6e": 1, "8e": 1, "SIC": 0, "CDJ": 0, "URG": 2, "ECG": 0, "ACUR/GDL": 2},
-    "Nuit": {"4e": 0, "7e": 0, "6e": 0, "8e": 0, "SIC": 0, "CDJ": 0, "URG": 1, "ECG": 0, "ACUR/GDL": 1},
-}
 
 
 class WorkforceReportError(ValueError):
@@ -106,6 +102,8 @@ def _find_label(line: str, patterns: Iterable[tuple[str, str]]) -> str | None:
 
 def _find_department(line: str) -> str | None:
     normalized_line = _normalized_text(line)
+    if re.search(r"\bhf\s+unite\s+de\s+medecine\s*-?\s*6\s*(?:e|eme)?\b", normalized_line):
+        return "6e"
     medicine_floor = re.search(
         r"\b[hm][fe]?\s+unite\s+de\s+medecine\s*-?\s*(\d+\s*(?:e|eme)?\s*etage)\b",
         normalized_line,
@@ -141,34 +139,6 @@ def _find_department(line: str) -> str | None:
     if re.search(r"\becg\b", normalized_line) and re.search(r"\bhf\b", normalized_line):
         return "ECG"
     return None
-
-
-def parse_ratio(ratio_str: object) -> tuple[int | None, int | None]:
-    """Parse complete, partial, or missing target/presence ratios safely."""
-    value = str(ratio_str)
-    match = re.search(r"(\d+)\s*/\s*[^\d]{0,12}(\d+)", value)
-    if match:
-        return int(match.group(1)), int(match.group(2))
-    single_digit = re.search(r"\b(\d{1,2})\b", value)
-    if single_digit:
-        return int(single_digit.group(1)), None
-    return None, None
-
-
-def _ratio_from_block(block: str) -> tuple[int | None, int | None]:
-    ratio_label = re.search(r"Ratio\s*/\s*Présences", block, re.IGNORECASE)
-    if ratio_label:
-        ratio_text = block[ratio_label.end():ratio_label.end() + 20]
-        match = re.match(
-            r"\s*[:._'\"-]*\s*(\d{1,2})(?!\d)(?:\s*/\s*[^\d]{0,12}(\d+))?",
-            ratio_text,
-        )
-        if match:
-            return int(match.group(1)), int(match.group(2)) if match.group(2) else None
-        return None, None
-    if re.search(r"(?<!\d)\d+\s*/\s*\d+(?!\d)", block):
-        return parse_ratio(block)
-    return None, None
 
 
 def _codes_in(text: str) -> list[str]:
@@ -257,20 +227,9 @@ def _apply_acur_gdl_category_rule(
     return target, presence
 
 
-def _target_for(category: str, department: str, shift: str, explicit_target: int | None) -> int:
-    """Prefer an explicit PDF target; otherwise use the AA reference grid."""
-    if explicit_target is not None:
-        return explicit_target
-    if category == "AA":
-        return AA_RATIO_GRID[shift][department]
-    return 0
-
-
-def _has_date_and_department_on_line(line: str) -> bool:
-    """Check if a line contains both a date and a department marker."""
-    has_date = bool(_date_phrases(line))
-    has_department = bool(_find_department(line))
-    return has_date and has_department
+def _target_for(category: str, department: str, shift: str) -> int:
+    """Return the immutable Cible.xlsx target for a department, shift and category."""
+    return TARGET_MATRIX[department][shift][CATEGORY_ORDER.index(category)]
 
 
 def _error(report_date: str, shift: str, category: str, employment_code: str, detail: str) -> WorkforceReportError:
@@ -342,38 +301,7 @@ def parse_workforce_text(
         block = " ".join(block_lines)
         codes = _codes_for_department(block, current_department)
         presence = _count_physical_staff_rows(block_lines[1:])
-        # Apply business rule: ignore ratios on lines that contain both date and department
-        if _has_date_and_department_on_line(line):
-            target, stated_presence = None, None
-        else:
-            target, stated_presence = _ratio_from_block(block)
-        if target is not None:
-            if target > 20:
-                warning = (
-                    f"Valeur Cible OCR improbable [{current_date} | {shift} | "
-                    f"{current_department} | {category}] : {target} remplacée par 0."
-                )
-                LOGGER.warning(warning)
-                if warnings is not None:
-                    warnings.append(warning)
-                target = None
-            if (
-                stated_presence is not None
-                and stated_presence != presence
-                and not (current_department == "ACUR/GDL" and category in {"Inf", "Aux", "PAB"})
-            ):
-                warning = (
-                    f"Écart détecté [{current_date} | {shift} | {current_department} | {category}] : "
-                    f"Présences indiquées = {stated_presence}, Lignes comptées = {presence}. "
-                    f"La valeur {presence} a été retenue pour le fichier Excel."
-                )
-                LOGGER.warning(warning)
-                if warnings is not None:
-                    warnings.append(warning)
-        if target is None and category != "AA":
-            target = presence
-        else:
-            target = _target_for(category, current_department, shift, target)
+        target = _target_for(category, current_department, shift)
         if current_department == "ACUR/GDL" and category == "AA" and presence > 5:
             warning = (
                 "Décompte élevé détecté pour AA dans ACUR/GDL (>5). "
@@ -386,14 +314,18 @@ def parse_workforce_text(
         target, presence = _apply_acur_gdl_category_rule(
             current_department, category, target, presence
         )
-        extra_codes = codes[target:] if presence > target else []
-        if presence > target:
-            suffix = f"+{presence - target}TS" if any(code in OVERTIME_CODES for code in extra_codes) else f"+{presence - target}R"
-        elif presence < target:
-            suffix = f"-{target - presence}"
+        hor12_excluded = current_department == "URG" and category == "Inf" and "HOR12" in codes
+        counted_presence = presence - int(hor12_excluded)
+        extra_codes = codes[target:] if counted_presence > target else []
+        if counted_presence > target:
+            suffix = f"+{counted_presence - target}TS" if any(code in OVERTIME_CODES for code in extra_codes) else f"+{counted_presence - target}R"
+        elif counted_presence < target:
+            suffix = f"-{target - counted_presence}"
         else:
             suffix = ""
-        records.append({"Département": current_department, "Catégorie": category, "Cible": target, "Présences": presence, "Décompte des lignes": presence, "Écart": suffix, "Codes": codes, "Date": current_date})
+        if hor12_excluded:
+            suffix += "+HOR12"
+        records.append({"Département": current_department, "Catégorie": category, "Cible": target, "Présences": counted_presence, "Décompte des lignes": presence, "Écart": suffix, "Codes": codes, "Date": current_date})
     if not records:
         raise WorkforceReportError(f"Aucune catégorie d'effectif trouvée | Date: {report_date} | Quart: {shift} | Catégorie d'emploi: inconnue | Code d'emploi: inconnu")
     return records
@@ -416,7 +348,7 @@ def _complete_date_skeleton(
                     "Département": department,
                     "Catégorie": category,
                     "Cible": _apply_acur_gdl_category_rule(
-                        department, category, _target_for(category, department, shift, None), 0
+                        department, category, _target_for(category, department, shift), 0
                     )[0],
                     "Présences": 0,
                     "Décompte des lignes": 0,
@@ -486,11 +418,13 @@ def build_workforce_workbook(
         hor12_formatting_rows: list[tuple[Any, int]] = []  # Track (sheet, row_number) for HOR12 formatting
         for report_date, date_records in records_by_date.items():
             rows = []
-            for idx, record in enumerate(date_records):
+            for record in date_records:
                 target, presence = _apply_acur_gdl_category_rule(
                     record.get("Département", ""),
                     record.get("Catégorie", ""),
-                    record.get("Cible", 0),
+                    _target_for(
+                        record.get("Catégorie", ""), record.get("Département", ""), shift
+                    ),
                     record.get("Présences", 0),
                 )
                 rows.append({
@@ -498,9 +432,9 @@ def build_workforce_workbook(
                     "Catégorie": record.get("Catégorie", ""),
                     "Cible": target,
                     "Présences": presence,
-                    "_codes": record.get("Codes", []),  # Track codes for HOR12 detection
+                    "_hor12": record.get("Écart", "").endswith("+HOR12"),
                 })
-            dataframe = pd.DataFrame(rows, columns=(*headers[:4], "_codes")).fillna(
+            dataframe = pd.DataFrame(rows, columns=(*headers[:4], "_hor12")).fillna(
                 {"Cible": 0, "Présences": 0}
             )
             dataframe["Cible"] = pd.to_numeric(dataframe["Cible"], errors="coerce").fillna(0)
@@ -518,17 +452,24 @@ def build_workforce_workbook(
                 by=["Département", "_category_order"], kind="stable", na_position="last"
             ).reset_index(drop=True)
             dataframe = dataframe.drop(columns=["_category_order"], errors="ignore")
-            codes_list = dataframe.pop("_codes")
-            dataframe["Écart (Décompte vs Cible)"] = dataframe["Présences"] - dataframe["Cible"]
+            hor12_rows = dataframe.pop("_hor12")
+            numerical_difference = dataframe["Présences"] - dataframe["Cible"]
+            dataframe["Écart (Décompte vs Cible)"] = numerical_difference
+            dataframe["Écart (Décompte vs Cible)"] = dataframe[
+                "Écart (Décompte vs Cible)"
+            ].astype(object)
+            dataframe.loc[hor12_rows, "Écart (Décompte vs Cible)"] = (
+                numerical_difference[hor12_rows].astype(int).astype(str) + "+HOR12"
+            )
             
             sheet_name = sheet_name_for(report_date, used_sheet_names)
             dataframe.to_excel(writer, sheet_name=sheet_name, startrow=3, index=False)
             sheet = writer.sheets[sheet_name]
             sheets.append((sheet, dataframe))
             
-            # Track rows with HOR12 codes for formatting
-            for idx, codes in enumerate(codes_list):
-                if codes and "HOR12" in codes:
+            # Track the business-rule exception for URG/Inf only.
+            for idx, has_hor12 in enumerate(hor12_rows):
+                if has_hor12:
                     excel_row = idx + 5  # +5 because of header rows (startrow=3 + header row 4)
                     hor12_formatting_rows.append((sheet, excel_row, dataframe.iloc[idx]))
             
@@ -537,7 +478,7 @@ def build_workforce_workbook(
                     "Date": report_date,
                     "Total Cible": int(dataframe["Cible"].sum()),
                     "Total Présences": int(dataframe["Présences"].sum()),
-                    "Total Écart": int(dataframe["Écart (Décompte vs Cible)"].sum()),
+                    "Total Écart": int(numerical_difference.sum()),
                     "Anomalies Flagged": sum(
                         report_date in warning for warning in (warnings or [])
                     ),
@@ -610,8 +551,6 @@ def build_workforce_workbook(
     white_font = Font(color="FFFFFF", bold=True)
     for sheet, excel_row, row_data in hor12_formatting_rows:
         cell = sheet.cell(excel_row, 5)
-        current_value = cell.value or 0
-        cell.value = f"{current_value}+HOR12"
         cell.fill = dark_blue_fill
         cell.font = white_font
         cell.alignment = Alignment(horizontal="center", vertical="center")

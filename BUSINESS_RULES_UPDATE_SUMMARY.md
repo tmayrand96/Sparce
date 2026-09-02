@@ -1,134 +1,73 @@
-# Business Rules Update - Summary of Changes
+# Sparce AI - Regles d'affaires MODE B
 
-## Overview
-Successfully implemented all 5 business rule updates for the Sparce workforce PDF-to-Excel pipeline with strict preservation of backward compatibility and test integrity.
+## Objet
 
-## Changes Applied
+Cette specification decrit les regles utilisees par le pipeline Sparce AI pour
+convertir un rapport PDF d'effectifs en classeur Excel. Elle remplace les
+regles historiques fondees sur les ratios OCR.
 
-### 1. **Department Mapping (Cartographie des Départements)**
-**File:** `backend/core/workforce_pipeline.py`
+## Cibles fixes
 
-- Updated `DEPARTMENT_PATTERNS` constant:
-  - Changed: `("HF Unité de Médecine - 6e étage", "6e")` → `("HF Unité de Médecine - 6e étage", "8e")`
-  
-- Updated `_find_department()` function:
-  - Added dynamic floor mapping: if floor number is 6 → return "8e"
-  - Floors 7, 4, etc. map correctly to their respective codes
+La colonne `Cible` est la copie de reference de `Cible.xlsx`, integree sous
+forme de matrice immuable dans `src/config/target_matrix.py`. C'est
+l'unique source de verite : aucun ratio ni aucune cible lus dans le PDF ne
+peuvent modifier le resultat Excel.
 
-**Result:** "HF Unité de médecine 6e étage" now correctly maps to Excel row `8e`
+L'ordre des categories est toujours : `Inf`, `Aux`, `PAB`, `AA`.
 
----
+| Departement | Jour | Soir | Nuit |
+| --- | --- | --- | --- |
+| 4e | 3, 2, 3, 1 | 3, 2, 2, 1 | 2, 1, 1, 0 |
+| 7e | 3, 2, 3, 1 | 3, 1, 2, 1 | 2, 0, 2, 0 |
+| 6e | 4, 2, 3, 1 | 3, 2, 2, 1 | 2, 2, 2, 0 |
+| 8e | 3, 2, 3, 1 | 3, 2, 2, 1 | 2, 2, 2, 0 |
+| SIC | 5, 0, 1, 0 | 4, 0, 1, 0 | 4, 0, 0, 0 |
+| CDJ | 2, 1, 1, 1 | 1, 1, 0, 0 | 0, 0, 0, 0 |
+| URG | 10, 1, 2, 2 | 9, 1, 3, 2 | 7, 1, 2, 1 |
+| ECG | 0, 0, 1, 0 | 0, 0, 1, 0 | 0, 0, 1, 0 |
+| ACUR/GDL | 0, 0, 0, 1 | 0, 0, 0, 1 | 0, 0, 0, 1 |
 
-### 2. **Employment Category Normalization (Normalisation des Catégories)**
-**File:** `backend/core/workforce_pipeline.py`
+Chaque suite de quatre valeurs respecte l'ordre des categories indique ci-dessus.
+Les lignes absentes de l'OCR sont ajoutees au classeur avec leur cible fixe et
+zero presence.
 
-- Updated `CATEGORY_PATTERNS` constant:
-  - Added new pattern: `("AA3 sec et adm", "AA")`
-  - Existing pattern `("Agent Adm 1-2-3-4", "AA")` already in place
-  
-- Pattern matching uses case-insensitive substring match (via `_find_label()`)
+## Reconnaissance des departements
 
-**Result:** All administrative titles consolidated under `AA` category, including:
-- "Agent Adm 1-2-3-4"
-- "AA3 sec et adm"
-- "AAS sec et adm"
-- Similar variants
+L'ancre OCR `HF Unité de médecine 6e` est reconnue sans sensibilite a la casse,
+avec ou sans tiret et avec des espaces variables. Elle est associee
+exclusivement au departement Excel `6e`; elle ne doit jamais etre associee a
+`8e`.
 
----
+Le bloc du 6e se termine a la prochaine ancre de departement ou de categorie.
+Ses lignes physiques sont donc attribuees seulement a `Inf`, `Aux`, `PAB` ou
+`AA` du 6e. Le departement `8e` demeure reserve a l'ancre de chirurgie court
+sejour.
 
-### 3. **Ratio/Target Exclusion Rule (Règle d'Exclusion des Ratios)**
-**File:** `backend/core/workforce_pipeline.py`
+## Presences et ecarts
 
-- Added helper function: `_has_date_and_department_on_line(line: str) -> bool`
-  - Detects if a line contains BOTH date and department
-  
-- Updated `parse_workforce_text()` function:
-  - Check if current line has date AND department
-  - If true: skip ratio extraction from that line (set `target, stated_presence = None, None`)
-  - If false: proceed with normal ratio extraction
+Une ligne physique valide de la table OCR compte pour une presence. Les entetes,
+les dates et les lignes structurelles qui ne representent pas un employe sont
+exclus. Les ratios trouves dans le PDF ne sont ni lus ni utilises pour le
+comptage.
 
-**Result:** Ratios appearing on header lines (date + department) are systematically ignored, preventing OCR ambiguities
+L'ecart numerique est calcule ainsi :
 
----
+`Écart = Présences - Cible`
 
-### 4. **New Shift Codes (Nouveaux Codes de Quart)**
-**File:** `backend/core/workforce_pipeline.py`
+La colonne `Écart (Décompte vs Cible)` affiche cet ecart. Une valeur non nulle
+est une anomalie de dotation.
 
-- Updated `VALID_CODES` constant:
-  - Added: `"CDJ"` (Chirurgie d'un jour / Day Surgery)
-  - Added: `"FL"` (already had FL4, FL6, FL7, FL8; now base code recognized)
-  - Added: `"HJT"` (Holiday/Special shift)
+## Exceptions
 
-**Result:** Shift code validation now accepts 29 valid codes including the 3 new codes
+- Pour `URG` / `Inf`, chaque code `HOR12` est exclu du nombre numerique de
+  presences. La cellule `Écart (Décompte vs Cible)` garde l'ecart calcule et
+  recoit le suffixe `+HOR12`.
+- Pour `ACUR/GDL`, seules les lignes `AA` comptent comme presences. Les
+  categories `Inf`, `Aux` et `PAB` sont forcees a `Présences = 0`; leurs cibles
+  fixes sont egalement nulles.
 
----
+## Controle de regression
 
-### 5. **Parser Flexibility Enhancement (Bonus)**
-**File:** `backend/core/workforce_pipeline.py`
-
-- Added lookahead logic in `parse_workforce_text()`:
-  - When a category is found but no department has been identified yet
-  - Parser looks ahead through upcoming lines to find a department declaration
-  - This allows handling PDFs with inconsistent structure (dept after category)
-
-**Result:** Improved PDF structure resilience without breaking existing formats
-
----
-
-## Test Results
-
-✅ **All 11 existing unit tests pass:**
-- test_parse_report_applies_shift_exception_and_validates_codes
-- test_workbook_contains_shift_date_and_formatted_rows
-- test_ratio_mismatch_uses_counted_codes_and_reports_warning
-- test_anonymized_report_keeps_rows_with_flexible_department_header
-- test_parse_ratio_accepts_complete_partial_and_missing_values
-- test_workbook_defaults_missing_target_and_presence_to_zero
-- test_workbook_uses_one_sheet_per_report_date
-- test_workbook_sorts_departments_in_business_order
-- test_each_date_sheet_contains_complete_department_category_skeleton
-- test_audit_tab_records_execution_summary_and_ocr_flags
-- test_business_rules_remap_sic_count_dvers_and_merge_acur_gdl
-
-✅ **Pilot execution successful:**
-- Source: `tests/Rapport-Template-Soir.pdf`
-- Output: `tests/output_Rapport-Template-Soir.xlsx`
-- Status: ✅ Converted successfully with proper mappings
-
-## Verification Results
-
-| Rule | Status | Evidence |
-|------|--------|----------|
-| 6e étage → 8e | ✅ | Floor 6 remapped in output |
-| 7e étage → 7e | ✅ | Floor 7 correct |
-| Chirurgie court séjour → 8e | ✅ | Verified in output |
-| CIUSSS Gestion des lits → ACUR/GDL | ✅ | Department present in output |
-| AA category grouping | ✅ | 9 AA entries across all departments |
-| Ratio exclusion on header lines | ✅ | Logic implemented and tested |
-| New shift codes (CDJ, FL, HJT) | ✅ | Added to VALID_CODES |
-
-## Backward Compatibility
-
-✅ **No breaking changes:**
-- All existing tests pass
-- Anonymized file handling unchanged
-- Pattern matching still works on existing formats
-- Ratio extraction still works on normal data blocks
-- No changes to output Excel format or structure
-
-## Files Modified
-
-1. **backend/core/workforce_pipeline.py** — All business rule implementations
-2. **docs/task_journal.md** — Execution log with timestamp and results
-
-## Execution Log
-
-- **Execution Timestamp:** 2026-08-30 03:08:40 EDT
-- **Test File:** Rapport-Template-Soir.pdf
-- **Shift:** Soir (Evening)
-- **Warnings:** 2 (expected OCR issues documented)
-- **Status:** ✅ Success
-
----
-
-**All requirements met. Production-ready.**
+Les tests de `tests/test_workforce_pipeline.py` verifient la matrice complete
+pour le quart Soir, l'isolement de l'ancre 6e, le comptage physique des lignes
+et l'exception `HOR12`.
