@@ -24,7 +24,7 @@ SHIFT_OPTIONS = ("Nuit", "Soir", "Jour")
 VALID_CODES = (
     "N", "S", "J", "TS1.5", "TSS", "TSN", "AIC", "SIC", "FL4", "FL7",
     "FL6", "FL8", "TSTD", "MON", "CHOC", "TRI", "EVAL", "URG", "ETJ",
-    "ETS", "ETN", "BRAN", "ACUR", "HSCM", "DVERS", "CDJ", "FL", "HJT", "HOR12",
+    "ETS", "ETN", "BRAN", "ACUR", "HSCM", "DVERS", "CDJ", "FL", "HJT", "HOR12", "TRANS",
 )
 OVERTIME_CODES = {"TS1.5", "TSS", "TSN", "TSTD"}
 LOGGER = logging.getLogger(__name__)
@@ -102,7 +102,10 @@ def _find_label(line: str, patterns: Iterable[tuple[str, str]]) -> str | None:
 
 def _find_department(line: str) -> str | None:
     normalized_line = _normalized_text(line)
-    if re.search(r"\bhf\s+unite\s+de\s+medecine\s*-?\s*6\s*(?:e|eme)?\b", normalized_line):
+    if re.search(
+        r"\bh\s*f\s+unite\s+de\s+medecine\s*[^a-z0-9]{0,3}\s*6\s*(?:e|eme)?\b",
+        normalized_line,
+    ):
         return "6e"
     medicine_floor = re.search(
         r"\b[hm][fe]?\s+unite\s+de\s+medecine\s*-?\s*(\d+\s*(?:e|eme)?\s*etage)\b",
@@ -218,6 +221,39 @@ def _recount_acur_gdl_aa_rows(lines: Iterable[str]) -> int:
     )
 
 
+def _presence_suffix(target: int, presence: int, codes: Iterable[str]) -> str:
+    difference = presence - target
+    if difference > 0:
+        extra_codes = list(codes)[target:]
+        return f"+{difference}TS" if any(code in OVERTIME_CODES for code in extra_codes) else f"+{difference}R"
+    if difference < 0:
+        return f"{difference}"
+    return ""
+
+
+def _merge_acur_gdl_aa_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Merge AA rows from the Accueil and Gestion des lits anchors."""
+    merged: list[dict[str, Any]] = []
+    positions: dict[tuple[str, str], int] = {}
+    for record in records:
+        key = (record.get("Date", ""), record.get("Catégorie", ""))
+        if record.get("Département") != "ACUR/GDL" or record.get("Catégorie") != "AA":
+            merged.append(record)
+            continue
+        if key not in positions:
+            positions[key] = len(merged)
+            merged.append(record)
+            continue
+        existing = merged[positions[key]]
+        existing["Présences"] += record.get("Présences", 0)
+        existing["Décompte des lignes"] += record.get("Décompte des lignes", 0)
+        existing["Codes"] = [*existing.get("Codes", []), *record.get("Codes", [])]
+        existing["Écart"] = _presence_suffix(
+            existing["Cible"], existing["Présences"], existing["Codes"]
+        )
+    return merged
+
+
 def _apply_acur_gdl_category_rule(
     department: str, category: str, target: int, presence: int
 ) -> tuple[int, int]:
@@ -263,13 +299,12 @@ def parse_workforce_text(
     records: list[dict[str, Any]] = []
     current_department: str | None = None
     current_date = report_date.split(" | ")[0]
-    primary_date_key = _date_key(current_date)
     sic_occurrence = 0
     for index, line in enumerate(lines):
         dates_on_line = _date_phrases(line)
         if dates_on_line:
             detected_date = dates_on_line[0]
-            if _date_key(detected_date) != primary_date_key:
+            if _date_key(detected_date) != _date_key(current_date):
                 current_date = detected_date
         department = _find_department(line)
         if department:
@@ -314,21 +349,13 @@ def parse_workforce_text(
         target, presence = _apply_acur_gdl_category_rule(
             current_department, category, target, presence
         )
-        hor12_excluded = current_department == "URG" and category == "Inf" and "HOR12" in codes
-        counted_presence = presence - int(hor12_excluded)
-        extra_codes = codes[target:] if counted_presence > target else []
-        if counted_presence > target:
-            suffix = f"+{counted_presence - target}TS" if any(code in OVERTIME_CODES for code in extra_codes) else f"+{counted_presence - target}R"
-        elif counted_presence < target:
-            suffix = f"-{target - counted_presence}"
-        else:
-            suffix = ""
-        if hor12_excluded:
-            suffix += "+HOR12"
+        excluded_presence = sum(code in {"HOR12", "TRANS"} for code in codes)
+        counted_presence = max(0, presence - excluded_presence)
+        suffix = _presence_suffix(target, counted_presence, codes)
         records.append({"Département": current_department, "Catégorie": category, "Cible": target, "Présences": counted_presence, "Décompte des lignes": presence, "Écart": suffix, "Codes": codes, "Date": current_date})
     if not records:
         raise WorkforceReportError(f"Aucune catégorie d'effectif trouvée | Date: {report_date} | Quart: {shift} | Catégorie d'emploi: inconnue | Code d'emploi: inconnu")
-    return records
+    return _merge_acur_gdl_aa_records(records)
 
 
 def _complete_date_skeleton(
@@ -415,7 +442,6 @@ def build_workforce_workbook(
         used_sheet_names: set[str] = set()
         sheets = []
         audit_rows = []
-        hor12_formatting_rows: list[tuple[Any, int]] = []  # Track (sheet, row_number) for HOR12 formatting
         for report_date, date_records in records_by_date.items():
             rows = []
             for record in date_records:
@@ -432,9 +458,8 @@ def build_workforce_workbook(
                     "Catégorie": record.get("Catégorie", ""),
                     "Cible": target,
                     "Présences": presence,
-                    "_hor12": record.get("Écart", "").endswith("+HOR12"),
                 })
-            dataframe = pd.DataFrame(rows, columns=(*headers[:4], "_hor12")).fillna(
+            dataframe = pd.DataFrame(rows, columns=headers[:4]).fillna(
                 {"Cible": 0, "Présences": 0}
             )
             dataframe["Cible"] = pd.to_numeric(dataframe["Cible"], errors="coerce").fillna(0)
@@ -452,26 +477,16 @@ def build_workforce_workbook(
                 by=["Département", "_category_order"], kind="stable", na_position="last"
             ).reset_index(drop=True)
             dataframe = dataframe.drop(columns=["_category_order"], errors="ignore")
-            hor12_rows = dataframe.pop("_hor12")
             numerical_difference = dataframe["Présences"] - dataframe["Cible"]
             dataframe["Écart (Décompte vs Cible)"] = numerical_difference
             dataframe["Écart (Décompte vs Cible)"] = dataframe[
                 "Écart (Décompte vs Cible)"
             ].astype(object)
-            dataframe.loc[hor12_rows, "Écart (Décompte vs Cible)"] = (
-                numerical_difference[hor12_rows].astype(int).astype(str) + "+HOR12"
-            )
             
             sheet_name = sheet_name_for(report_date, used_sheet_names)
             dataframe.to_excel(writer, sheet_name=sheet_name, startrow=3, index=False)
             sheet = writer.sheets[sheet_name]
             sheets.append((sheet, dataframe))
-            
-            # Track the business-rule exception for URG/Inf only.
-            for idx, has_hor12 in enumerate(hor12_rows):
-                if has_hor12:
-                    excel_row = idx + 5  # +5 because of header rows (startrow=3 + header row 4)
-                    hor12_formatting_rows.append((sheet, excel_row, dataframe.iloc[idx]))
             
             audit_rows.append(
                 {
@@ -545,15 +560,6 @@ def build_workforce_workbook(
         for column, width in enumerate((20, 18, 12, 14, 24), 1):
             sheet.column_dimensions[get_column_letter(column)].width = width
         sheet.freeze_panes = "A5"
-    
-    # Apply HOR12 formatting (dark blue background with white text)
-    dark_blue_fill = PatternFill("solid", fgColor="17324D")  # Same dark blue as headers
-    white_font = Font(color="FFFFFF", bold=True)
-    for sheet, excel_row, row_data in hor12_formatting_rows:
-        cell = sheet.cell(excel_row, 5)
-        cell.fill = dark_blue_fill
-        cell.font = white_font
-        cell.alignment = Alignment(horizontal="center", vertical="center")
     
     workbook.save(output)
     output.seek(0)

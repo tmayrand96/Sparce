@@ -1,3 +1,11 @@
+## Correctif de robustesse MODE B - 2026-09-03
+
+- L'état actif du parseur (date, département et catégorie) est conservé entre les pages. Les bannières de date, en-têtes, pieds de page et numéros de page ne ferment pas prématurément un bloc.
+- L'ancre OCR du `6e` accepte les variantes de casse, d'espacement et les caractères parasites autour de `HF Unité de médecine 6e`.
+- `ACUR/GDL` fusionne les présences `AA` des ancres `HF Accueil et réception` et `CIUSSS Gestion des lits`.
+- Chaque occurrence de `HOR12` et de `TRANS` soustrait une présence, pour toutes les catégories et tous les départements. L'écart reste numérique; aucun suffixe `+HOR12` n'est ajouté.
+- Validation exécutée sur `tests/Rapport-Template-Soir.pdf`, avec contrôle des blocs `6e`, `7e`, `8e`, `ACUR/GDL` et des codes exclus.
+
 ## 📝 Execution Journal Entry — 2026-08-28 02:16:19 EDT
 
 - **Source File:** `Rapport-Template-Soir.pdf`
@@ -248,7 +256,7 @@ Anonymisation: Désactivée
 - **Corrections appliquées :** normalisation insensible aux accents des ancres OCR; reconnaissance des variantes de départements (`HE`, `MF`, `PBM`, `PEM`); détection des catégories à partir des identifiants d'emploi; décompte par projection de colonne pour ne pas compter deux fois une même personne; maintien de la date complète comme date canonique.
 - **Résultat de l'audit :** toutes les paires Département/Catégorie sont à présent détectées, et les présences sont récupérées sauf les exceptions de règles d'affaires à confirmer.
 - **Point bloquant pour une correspondance à 100 % :** l'OCR image ordonné lit `URG/PAB = 2/4` et `SIC/PAB = 4/2`, alors que le Gold Standard demande respectivement `3/4` et `1/2`. Aucune règle métier du dépôt ne permet d'inférer ces cibles; les imposer reviendrait à coder en dur des valeurs du fichier étalon.
-- La valeur sémantique du `Code` ne détermine plus le décompte; les codes sont conservés uniquement pour la mise en valeur `HOR12`.
+- La valeur sémantique du `Code` ne détermine plus le décompte; les codes `HOR12` et `TRANS` servent uniquement à appliquer leurs soustractions métier.
 - Les en-têtes de tableau et les lignes de date sont exclus du comptage.
 - Le classeur généré conserve les cinq colonnes prescrites et chaque `Écart (Décompte vs Cible)` a été vérifié comme `Présences - Cible`.
 - Aucun rapport anonymisé distinct n'est versionné dans le dépôt; la validation complémentaire nécessitera un PDF anonymisé fourni ultérieurement.
@@ -884,5 +892,149 @@ Anonymisation: Désactivée
 
 ### 🔍 Calculation & Alignment Audit
 9 ligne(s) avec écart détecté(es). Vérification manuelle recommandée.
+
+---
+## 📝 Execution Journal Entry — 2026-09-02 21:03:52 EDT
+
+- **Dernier Commit Git:** Updated app components to allow ACUR/GDL AA update
+- **Description de la Mise à Jour:** Rapport de conversion PDF vers Excel avec décompte OCR et validation des codes
+- **Source File:** Rapport-Template-Soir.pdf
+- **Report Context:** Le vendredi 4 sept. 2026 | Shift: Soir
+
+### 📊 Parsing Metrics
+- **Total Shift Rows Extracted:** 27
+- **Total Departments Identified:** 9
+- **Code Count:**
+  - 4e: AIC=1, FL4=5, N=1, TSS=1
+  - 6e: AIC=1, FL6=7, N=1
+  - 7e: AIC=1, FL=1, FL7=5
+  - 8e: FL8=5
+  - ACUR/GDL: ACUR=2, FL=1, HSCM=1
+  - CDJ: CDJ=2
+  - ECG: N=1
+  - SIC: AIC=1, N=1, SIC=5
+  - URG: AIC=1, BRAN=1, CHOC=1, HOR12=1, MON=2, N=1, S=3, TRI=2, URG=1
+
+### ⚠️ Execution Warnings
+Aucun avertissement
+
+### ✅ Validation Checklist
+- ✓ Records parsed successfully
+- ✓ Departments identified: 9
+- ⚠ 8 discrepancies detected
+
+### 📌 Notes
+Anonymisation: Désactivée
+
+### 🔍 Calculation & Alignment Audit
+8 ligne(s) avec écart détecté(es). Vérification manuelle recommandée.
+
+---
+## 📝 Execution Journal Entry — 2026-09-02 21:06:04 EDT
+
+- **Dernier Commit Git:** Updated app components to allow ACUR/GDL AA update
+- **Description de la Mise à Jour:** Rapport de conversion PDF vers Excel avec décompte OCR et validation des codes
+- **Source File:** Rapport-Template-Soir.pdf
+- **Report Context:** Le vendredi 4 sept. 2026 | 4 sept. 2026 | Shift: Soir
+
+### 📊 Parsing Metrics
+- **Total Shift Rows Extracted:** 27
+- **Total Departments Identified:** 9
+- **Code Count:**
+  - 4e: AIC=1, FL4=5, N=1, TSS=1
+  - 6e: AIC=1, FL6=7, N=1
+  - 7e: AIC=1, FL=1, FL7=5
+  - 8e: FL8=5
+  - ACUR/GDL: ACUR=2, FL=1, HSCM=1
+  - CDJ: CDJ=2
+  - ECG: N=1
+  - SIC: AIC=1, N=1, SIC=5
+  - URG: AIC=1, BRAN=1, CHOC=1, HOR12=1, MON=2, N=1, S=3, TRI=2, URG=1
+
+### ⚠️ Execution Warnings
+Aucun avertissement
+
+### ✅ Validation Checklist
+- ✓ Records parsed successfully
+- ✓ Departments identified: 9
+- ⚠ 8 discrepancies detected
+
+### 📌 Notes
+Anonymisation: Désactivée
+
+### 🔍 Calculation & Alignment Audit
+8 ligne(s) avec écart détecté(es). Vérification manuelle recommandée.
+
+---
+## 📝 Execution Journal Entry — 2026-09-02 21:07:03 EDT
+
+- **Dernier Commit Git:** Updated app components to allow ACUR/GDL AA update
+- **Description de la Mise à Jour:** Rapport de conversion PDF vers Excel avec décompte OCR et validation des codes
+- **Source File:** Rapport-Template-Soir.pdf
+- **Report Context:** Le vendredi 4 sept. 2026 | 4 sept. 2026 | Shift: Soir
+
+### 📊 Parsing Metrics
+- **Total Shift Rows Extracted:** 27
+- **Total Departments Identified:** 9
+- **Code Count:**
+  - 4e: AIC=1, FL4=5, N=1, TSS=1
+  - 6e: AIC=1, FL6=7, N=1
+  - 7e: AIC=1, FL=1, FL7=5
+  - 8e: FL8=5
+  - ACUR/GDL: ACUR=2, FL=1, HSCM=1
+  - CDJ: CDJ=2
+  - ECG: N=1
+  - SIC: AIC=1, N=1, SIC=5
+  - URG: AIC=1, BRAN=1, CHOC=1, HOR12=1, MON=2, N=1, S=3, TRI=2, URG=1
+
+### ⚠️ Execution Warnings
+Aucun avertissement
+
+### ✅ Validation Checklist
+- ✓ Records parsed successfully
+- ✓ Departments identified: 9
+- ⚠ 8 discrepancies detected
+
+### 📌 Notes
+Anonymisation: Désactivée
+
+### 🔍 Calculation & Alignment Audit
+8 ligne(s) avec écart détecté(es). Vérification manuelle recommandée.
+
+---
+## 📝 Execution Journal Entry — 2026-09-02 21:08:01 EDT
+
+- **Dernier Commit Git:** Updated app components to allow ACUR/GDL AA update
+- **Description de la Mise à Jour:** Rapport de conversion PDF vers Excel avec décompte OCR et validation des codes
+- **Source File:** Rapport-Template-Soir.pdf
+- **Report Context:** Le vendredi 4 sept. 2026 | Shift: Soir
+
+### 📊 Parsing Metrics
+- **Total Shift Rows Extracted:** 26
+- **Total Departments Identified:** 9
+- **Code Count:**
+  - 4e: AIC=1, FL4=5, N=1, TSS=1
+  - 6e: AIC=1, FL6=7, N=1
+  - 7e: AIC=1, FL=1, FL7=5
+  - 8e: FL8=5
+  - ACUR/GDL: ACUR=2, FL=1, HSCM=1
+  - CDJ: CDJ=2
+  - ECG: N=1
+  - SIC: AIC=1, N=1, SIC=5
+  - URG: AIC=1, BRAN=1, CHOC=1, HOR12=1, MON=2, N=1, S=3, TRI=2, URG=1
+
+### ⚠️ Execution Warnings
+Aucun avertissement
+
+### ✅ Validation Checklist
+- ✓ Records parsed successfully
+- ✓ Departments identified: 9
+- ⚠ 8 discrepancies detected
+
+### 📌 Notes
+Anonymisation: Désactivée
+
+### 🔍 Calculation & Alignment Audit
+8 ligne(s) avec écart détecté(es). Vérification manuelle recommandée.
 
 ---

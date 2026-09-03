@@ -353,7 +353,7 @@ Infirmière
     assert [(record["Département"], record["Catégorie"]) for record in records[-1:]] == [("8e", "Inf")]
 
 
-def test_urg_inf_hor12_is_excluded_from_presences_and_reported_in_difference():
+def test_hor12_is_excluded_from_presences_without_difference_suffix():
     text = """Le lundi 7 sept. 2026
 HF Urgence
 Infirmière
@@ -371,5 +371,5 @@ Infirmière
         if sheet.cell(row, 1).value == "URG" and sheet.cell(row, 2).value == "Inf"
     )
 
-    assert (record["Cible"], record["Présences"], record["Écart"]) == (9, 1, "-8+HOR12")
-    assert sheet.cell(urg_inf_row, 5).value == "-8+HOR12"
+    assert (record["Cible"], record["Présences"], record["Écart"]) == (9, 1, "-8")
+    assert sheet.cell(urg_inf_row, 5).value == -8

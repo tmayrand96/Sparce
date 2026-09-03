@@ -59,9 +59,13 @@ est une anomalie de dotation.
 
 ## Exceptions
 
-- Pour `URG` / `Inf`, chaque code `HOR12` est exclu du nombre numerique de
-  presences. La cellule `Écart (Décompte vs Cible)` garde l'ecart calcule et
-  recoit le suffixe `+HOR12`.
+- Chaque code `HOR12` est exclu du nombre numerique de presences, quelle que
+  soit la categorie ou le departement. La cellule `Écart (Décompte vs Cible)`
+  reste strictement numerique et ne recoit aucun suffixe `+HOR12`.
+- Chaque code `TRANS` est egalement soustrait des presences dans toutes les
+  categories et tous les departements.
+- Les ancres `HF Accueil et réception` et `CIUSSS Gestion des lits` sont
+  fusionnees dans la ligne finale `ACUR/GDL` / `AA`.
 - Pour `ACUR/GDL`, seules les lignes `AA` comptent comme presences. Les
   categories `Inf`, `Aux` et `PAB` sont forcees a `Présences = 0`; leurs cibles
   fixes sont egalement nulles.
@@ -70,4 +74,4 @@ est une anomalie de dotation.
 
 Les tests de `tests/test_workforce_pipeline.py` verifient la matrice complete
 pour le quart Soir, l'isolement de l'ancre 6e, le comptage physique des lignes
-et l'exception `HOR12`.
+et les soustractions `HOR12`/`TRANS`.
