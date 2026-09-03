@@ -6,6 +6,21 @@
 - Chaque occurrence de `HOR12` et de `TRANS` soustrait une présence, pour toutes les catégories et tous les départements. L'écart reste numérique; aucun suffixe `+HOR12` n'est ajouté.
 - Validation exécutée sur `tests/Rapport-Template-Soir.pdf`, avec contrôle des blocs `6e`, `7e`, `8e`, `ACUR/GDL` et des codes exclus.
 
+## Itération TDD Gold Standard MODE A - 2026-09-03
+
+- **Harness ajouté :** `tests/test_pipeline_accuracy.py` découvre automatiquement les paires `Rapport-A-<jour>-<quart>.pdf` / `Target-Etalon-<jour>-<quart>.xlsx`, compare `Cible`, `Présences` et `Écart (Décompte vs Cible)`, puis affiche les seuls écarts classés.
+- **Étalons versionnés disponibles :** 4 et 5 septembre uniquement. Aucun couple PDF/XLSX pour les 6 et 7 septembre n'est présent dans `tests/` à cette date.
+
+| Jour | Avant correctifs | Après correctifs |
+| --- | --- | --- |
+| 4 septembre | 100,0 % (108/108) | 100,0 % (108/108) |
+| 5 septembre | Non calculable : `Département introuvable` | 74,1 % (80/108) |
+| Global disponible | Non calculable | 87,0 % (188/216) |
+
+- **Correctifs appliqués :** les catégories en tête de page peuvent retrouver un service grâce à un code de service unique du même bloc; les lignes de pied de page OCR (`imprimé le`, y compris les variantes tronquées) ne créent plus de dates ni de feuilles fantômes.
+- **Règle métier :** `src/aggregator/targets.py` force toutes les cibles CDJ (`Inf`, `Aux`, `PAB`, `AA`) à `0` le samedi ou le dimanche, selon le jour OCR ou la date dérivée.
+- **Résidu constaté :** les écarts du 5 septembre proviennent de colonnes OCR dissociées sans ancre de département exploitable. Ils restent visibles dans la matrice du harness plutôt que d'être imputés à une catégorie par une valeur codée en dur.
+
 ## 📝 Execution Journal Entry — 2026-08-28 02:16:19 EDT
 
 - **Source File:** `Rapport-Template-Soir.pdf`

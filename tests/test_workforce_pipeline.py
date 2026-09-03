@@ -2,6 +2,7 @@ from io import BytesIO
 from openpyxl import load_workbook
 
 from backend.core.workforce_pipeline import build_workforce_workbook, parse_workforce_text
+from src.aggregator import target_for
 from src.utils.journal_logger import log_execution_entry
 
 
@@ -326,6 +327,35 @@ def test_workbook_evening_targets_match_reference_matrix():
         for department, targets in expected.items()
         for index, category in enumerate(("Inf", "Aux", "PAB", "AA"))
     }
+
+
+def test_cdj_targets_are_zero_for_each_category_on_weekends():
+    records = parse_workforce_text(
+        """Le samedi 5 sept. 2026
+HF Soins intensifs coronariens
+Infirmière 1/1 SIC
+HF Soins intensifs coronariens
+Infirmière auxiliaire 1/1 SIC
+HF Soins intensifs coronariens
+Préposé aux bénéficiaires 1/1 SIC
+HF Soins intensifs coronariens
+Agent Adm 1-2-3-4 1/1 SIC
+""",
+        "Soir",
+    )
+
+    cdj_records = [record for record in records if record["Département"] == "CDJ"]
+    workbook = load_workbook(BytesIO(build_workforce_workbook(records, "Soir").getvalue()))
+    sheet = workbook["Le samedi 5 sept. 2026"]
+    cdj_targets = [
+        sheet.cell(row, 3).value
+        for row in range(5, sheet.max_row + 1)
+        if sheet.cell(row, 1).value == "CDJ"
+    ]
+
+    assert [record["Cible"] for record in cdj_records] == [0, 0]
+    assert cdj_targets == [0, 0, 0, 0]
+    assert target_for("Inf", "CDJ", "Soir", "5 sept. 2026") == 0
 
 
 def test_sixth_floor_anchor_isolated_from_adjacent_department():

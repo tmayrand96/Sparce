@@ -15,6 +15,7 @@ from openpyxl.formatting.rule import CellIsRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
+from src.aggregator import target_for
 from src.config.target_matrix import TARGET_MATRIX
 from src.utils.journal_logger import log_execution_entry
 
@@ -27,6 +28,10 @@ VALID_CODES = (
     "ETS", "ETN", "BRAN", "ACUR", "HSCM", "DVERS", "CDJ", "FL", "HJT", "HOR12", "TRANS",
 )
 OVERTIME_CODES = {"TS1.5", "TSS", "TSN", "TSTD"}
+CODE_DEPARTMENT_ANCHORS = {
+    "FL4": "4e", "FL7": "7e", "FL6": "6e", "FL8": "8e", "SIC": "SIC",
+    "URG": "URG", "ACUR": "ACUR/GDL", "HSCM": "ACUR/GDL",
+}
 LOGGER = logging.getLogger(__name__)
 
 DEPARTMENT_PATTERNS = (
@@ -82,6 +87,14 @@ def _normalized_text(text: str) -> str:
 
 def _date_key(date: str) -> str:
     return re.sub(r"\b(?:le\s+)?(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\s*", "", _normalized_text(date)).strip(". ")
+
+
+def _is_page_metadata(line: str) -> bool:
+    normalized_line = _normalized_text(line)
+    return bool(
+        re.search(r"\b\w*prime\s+le\b", normalized_line)
+        or re.search(r"\bpage\s+\d+\s+de\s+\d+\b", normalized_line)
+    )
 
 
 def extract_report_date(text: str) -> str:
@@ -161,6 +174,16 @@ def _codes_for_department(block: str, department: str) -> list[str]:
     if department != "URG":
         return [code for code in codes if code != "DVERS"]
     return codes
+
+
+def _department_from_block_codes(block: str) -> str | None:
+    """Recover an omitted page header from a unique service code in its data block."""
+    departments = {
+        CODE_DEPARTMENT_ANCHORS[code]
+        for code in _codes_in_code_column(block)
+        if code in CODE_DEPARTMENT_ANCHORS
+    }
+    return next(iter(departments)) if len(departments) == 1 else None
 
 
 STRUCTURAL_VALUE_PATTERN = re.compile(
@@ -263,9 +286,9 @@ def _apply_acur_gdl_category_rule(
     return target, presence
 
 
-def _target_for(category: str, department: str, shift: str) -> int:
+def _target_for(category: str, department: str, shift: str, report_date: str | None = None) -> int:
     """Return the immutable Cible.xlsx target for a department, shift and category."""
-    return TARGET_MATRIX[department][shift][CATEGORY_ORDER.index(category)]
+    return target_for(category, department, shift, report_date)
 
 
 def _error(report_date: str, shift: str, category: str, employment_code: str, detail: str) -> WorkforceReportError:
@@ -302,7 +325,7 @@ def parse_workforce_text(
     sic_occurrence = 0
     for index, line in enumerate(lines):
         dates_on_line = _date_phrases(line)
-        if dates_on_line:
+        if dates_on_line and not _is_page_metadata(line):
             detected_date = dates_on_line[0]
             if _date_key(detected_date) != _date_key(current_date):
                 current_date = detected_date
@@ -316,6 +339,12 @@ def parse_workforce_text(
         category = _find_label(line, CATEGORY_PATTERNS)
         if not category:
             continue
+        block_lines = [line]
+        for following in lines[index + 1:]:
+            if _find_department(following) or _find_label(following, CATEGORY_PATTERNS):
+                break
+            block_lines.append(following)
+        block = " ".join(block_lines)
         if current_department is None:
             # Look ahead to find department in the current block
             for following in lines[index + 1:]:
@@ -326,17 +355,13 @@ def parse_workforce_text(
                 if _find_label(following, CATEGORY_PATTERNS):
                     break
         if current_department is None:
+            current_department = _department_from_block_codes(block)
+        if current_department is None:
             raise _error(report_date, shift, category, category, "Département introuvable")
 
-        block_lines = [line]
-        for following in lines[index + 1:]:
-            if _find_department(following) or _find_label(following, CATEGORY_PATTERNS):
-                break
-            block_lines.append(following)
-        block = " ".join(block_lines)
         codes = _codes_for_department(block, current_department)
         presence = _count_physical_staff_rows(block_lines[1:])
-        target = _target_for(category, current_department, shift)
+        target = _target_for(category, current_department, shift, current_date)
         if current_department == "ACUR/GDL" and category == "AA" and presence > 5:
             warning = (
                 "Décompte élevé détecté pour AA dans ACUR/GDL (>5). "
@@ -375,7 +400,7 @@ def _complete_date_skeleton(
                     "Département": department,
                     "Catégorie": category,
                     "Cible": _apply_acur_gdl_category_rule(
-                        department, category, _target_for(category, department, shift), 0
+                        department, category, _target_for(category, department, shift, date), 0
                     )[0],
                     "Présences": 0,
                     "Décompte des lignes": 0,
@@ -449,7 +474,7 @@ def build_workforce_workbook(
                     record.get("Département", ""),
                     record.get("Catégorie", ""),
                     _target_for(
-                        record.get("Catégorie", ""), record.get("Département", ""), shift
+                        record.get("Catégorie", ""), record.get("Département", ""), shift, report_date
                     ),
                     record.get("Présences", 0),
                 )
