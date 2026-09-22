@@ -58,7 +58,7 @@ def _find_metadata(rows: list[list[Any]], sheet_name: str) -> dict[str, Any]:
     return metadata
 
 
-def _find_table_header(rows: list[list[Any]]) -> tuple[int, dict[str, int]]:
+def _find_table_header(df_raw: pd.DataFrame) -> tuple[int, pd.DataFrame, dict[str, int]]:
     aliases = {
         "Département": {"département", "departement", "department", "unité", "unite"},
         "Catégorie": {"catégorie", "categorie", "catégorie d'emploi", "emploi", "poste"},
@@ -66,17 +66,39 @@ def _find_table_header(rows: list[list[Any]]) -> tuple[int, dict[str, int]]:
         "Présences": {"présences", "presences", "présence", "presence", "effectif"},
         "Écart": {"écart", "ecart", "différence", "difference", "delta"},
     }
-    for row_index, row in enumerate(rows):
-        normalized = [_normalized(cell) for cell in row]
+    def find_positions(columns: Any) -> dict[str, int]:
+        normalized = [_normalized(cell) for cell in columns]
         positions: dict[str, int] = {}
         for name, accepted in aliases.items():
             for column_index, value in enumerate(normalized):
                 if value in accepted or any(alias in value for alias in accepted if len(alias) > 5):
                     positions[name] = column_index
                     break
-        if len(positions) == len(aliases):
-            return row_index, positions
-    raise ValueError("Structure invalide: colonnes Département, Catégorie, Cible, Présences et Écart introuvables.")
+        return positions
+
+    header_row_idx = None
+    if len(df_raw.index) > 2:
+        row_3 = df_raw.iloc[2]
+        if any("département" in _normalized(value) for value in row_3):
+            header_row_idx = 2
+
+    if header_row_idx is None:
+        for row_index in range(min(6, len(df_raw.index))):
+            row = df_raw.iloc[row_index]
+            if any("département" in _normalized(value) for value in row):
+                header_row_idx = row_index
+                break
+
+    if header_row_idx is None:
+        raise ValueError("Structure invalide: colonne Département introuvable dans les lignes 0 à 5.")
+
+    df = df_raw.copy()
+    df.columns = df_raw.iloc[header_row_idx].values
+    df_data = df_raw.iloc[header_row_idx + 1:].copy()
+    positions = find_positions(df.columns)
+    if len(positions) != len(aliases):
+        raise ValueError("Structure invalide: colonnes Département, Catégorie, Cible, Présences et Écart introuvables.")
+    return header_row_idx, df_data, positions
 
 
 def _number(value: Any) -> float:
@@ -101,13 +123,14 @@ def parse_workforce_xlsx(uploaded_file) -> Tuple[pd.DataFrame, pd.DataFrame, dic
     records: list[dict[str, Any]] = []
     sheets: list[dict[str, Any]] = []
     for sheet_name in workbook.sheet_names:
-        rows = pd.read_excel(workbook, sheet_name=sheet_name, header=None).values.tolist()
-        if not rows:
+        df_raw = pd.read_excel(workbook, sheet_name=sheet_name, header=None)
+        if df_raw.empty:
             continue
+        rows = df_raw.values.tolist()
         metadata = _find_metadata(rows, sheet_name)
-        header_index, positions = _find_table_header(rows)
+        header_index, df_data, positions = _find_table_header(df_raw)
         sheets.append(metadata.copy())
-        for row in rows[header_index + 1 :]:
+        for row in df_data.values.tolist():
             values = {name: row[index] if index < len(row) else None for name, index in positions.items()}
             if all(pd.isna(values[name]) or values[name] == "" for name in positions):
                 continue

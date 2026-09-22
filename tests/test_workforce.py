@@ -24,6 +24,21 @@ def _workbook_bytes():
     return output
 
 
+def _workbook_with_header_on_line_three():
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        pd.DataFrame(
+            [
+                ["Jour", "MARDI"],
+                ["Date", "2026-09-22"],
+                ["Département", "Catégorie", "Cible", "Présences", "Écart"],
+                ["Unité C", "Aux", 5, 4, -1],
+            ]
+        ).to_excel(writer, sheet_name="MARDI", header=False, index=False)
+    output.seek(0)
+    return output
+
+
 def test_parse_workforce_xlsx_splits_needs_and_surplus():
     needs, surplus, summary = parse_workforce_xlsx(_workbook_bytes())
 
@@ -33,6 +48,16 @@ def test_parse_workforce_xlsx_splits_needs_and_surplus():
     assert len(surplus) == 1
     assert surplus.iloc[0]["Surplus"] == 2
     assert summary["lignes_analysees"] == 2
+
+
+def test_parse_workforce_xlsx_uses_pandas_index_two_as_header():
+    needs, surplus, summary = parse_workforce_xlsx(_workbook_with_header_on_line_three())
+
+    assert len(needs) == 1
+    assert needs.iloc[0]["Catégorie"] == "Aux"
+    assert needs.iloc[0]["Besoins"] == 1
+    assert surplus.empty
+    assert summary["lignes_analysees"] == 1
 
 
 def test_generate_summary_excel_has_expected_sheets_and_formatting():
