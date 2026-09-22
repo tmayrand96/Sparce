@@ -7,6 +7,11 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from backend.core.pipeline import process_document as run_pipeline
+from backend.core.workforce import (
+    generate_summary_excel,
+    parse_workforce_xlsx,
+    query_gemini_analysis,
+)
 from tempfile import NamedTemporaryFile
 from typing import Optional, Tuple
 
@@ -31,6 +36,8 @@ def detect_document_format(uploaded_file) -> Tuple[str, str]:
     if suffix in {".png", ".jpg", ".jpeg"}:
         image_label = "PNG Image" if suffix == ".png" else "JPEG Image"
         return "image", f"Detected Format: {image_label}"
+    if suffix == ".xlsx":
+        return "xlsx", "Detected Format: Excel Workforce Workbook"
 
     return "unknown", "Detected Format: Unsupported Format"
 
@@ -159,14 +166,15 @@ def main() -> None:
             st.image(str(logo_path), width=280)
         else:
             st.title("Sparce AI")
-        st.caption("Handwritten Notes & Document Intelligence")
+        st.caption("Workforce planning and replacement activity intelligence")
 
-    st.write("Upload a handwritten note, scan, or PDF and turn it into a clean summary.")
+    st.title("Module: Gestion des activités de remplacement")
+    st.write("Importez un classeur Excel multi-feuilles pour analyser les besoins et les surplus.")
 
     uploaded_file = st.file_uploader(
         "",
-        type=["png", "jpg", "jpeg", "pdf"],
-        help="Drag and drop or browse device (Accepted formats: PNG, JPEG, PDF)",
+        type=["xlsx", "png", "jpg", "jpeg", "pdf"],
+        help="Drag and drop or browse device (Accepted formats: XLSX, PNG, JPEG, PDF)",
     )
 
     if uploaded_file is not None:
@@ -190,50 +198,59 @@ def main() -> None:
     use_custom_prompt = st.checkbox("Enable Prompt", value=False)
     custom_question = ""
     if use_custom_prompt:
-        custom_question = st.text_input(
-            "Ask a specific question about the document",
+        custom_question = st.text_area(
+            "Ask a specific question about the workforce data",
             placeholder="e.g. What are the key takeaways?",
         )
 
-    challenge_mode = st.checkbox("⚡ Challenge me", value=False, key="challenge_mode_toggle")
-
-    if st.button("Generate Summary", type="primary", use_container_width=True, disabled=uploaded_file is None):
+    if st.button("Generate Personalized Workforce Report", type="primary", use_container_width=True, disabled=uploaded_file is None):
         if uploaded_file is None:
             st.warning("Please upload a document before generating a summary.")
         else:
             suffix = Path(getattr(uploaded_file, "name", "file")).suffix.lower() or ".bin"
-            with NamedTemporaryFile("wb", suffix=suffix, delete=False) as temp_file:
-                temp_file.write(uploaded_file.getvalue())
-                temp_path = temp_file.name
+            if suffix == ".xlsx":
+                try:
+                    with st.spinner("Transforming workforce workbook and generating report..."):
+                        df_besoins, df_surplus, data_summary = parse_workforce_xlsx(uploaded_file)
+                        excel_output = generate_summary_excel(df_besoins, df_surplus)
+                        summary = query_gemini_analysis(data_summary, custom_question)
+                    st.session_state["summary"] = summary
+                    st.session_state["workforce_xlsx"] = excel_output.getvalue()
+                    original_name = Path(getattr(uploaded_file, "name", "sparce_workforce")).stem
+                    st.session_state["summary_file_name"] = f"{original_name}_report.md"
+                    st.session_state["xlsx_file_name"] = f"{original_name}_summary.xlsx"
+                    st.session_state.pop("summary_error", None)
+                except Exception as exc:
+                    st.session_state["summary_error"] = f"Processing failed: {exc}"
+                uploaded_file = None
+            else:
+                with NamedTemporaryFile("wb", suffix=suffix, delete=False) as temp_file:
+                    temp_file.write(uploaded_file.getvalue())
+                    temp_path = temp_file.name
 
-            try:
-                with st.spinner("Processing document..."):
-                    summary = run_pipeline(
-                        temp_path,
-                        user_prompt=custom_question if use_custom_prompt else None,
-                        max_output_tokens=300,
-                        challenge_mode=challenge_mode,
+                try:
+                    with st.spinner("Processing document..."):
+                        summary = run_pipeline(
+                            temp_path,
+                            user_prompt=custom_question if use_custom_prompt else None,
+                            max_output_tokens=300,
+                        )
+                    st.session_state["summary"] = summary
+                    st.session_state.pop("summary_error", None)
+                    original_name = Path(getattr(uploaded_file, "name", "sparce_summary")).stem
+                    st.session_state["summary_file_name"] = (
+                        f"{original_name}_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
                     )
-                st.session_state["summary"] = summary
-                st.session_state["challenge_mode"] = challenge_mode
-                st.session_state.pop("summary_error", None)
-                original_name = Path(getattr(uploaded_file, "name", "sparce_summary")).stem
-                st.session_state["summary_file_name"] = (
-                    f"{original_name}_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
-                )
-            except Exception as exc:  # pragma: no cover - UI-level fallback
-                st.session_state["summary_error"] = f"Processing failed: {exc}"
-            finally:
-                Path(temp_path).unlink(missing_ok=True)
+                except Exception as exc:  # pragma: no cover - UI-level fallback
+                    st.session_state["summary_error"] = f"Processing failed: {exc}"
+                finally:
+                    Path(temp_path).unlink(missing_ok=True)
 
     if "summary_error" in st.session_state and st.session_state["summary_error"]:
         st.error(st.session_state["summary_error"])
 
     if "summary" in st.session_state and st.session_state["summary"] and not st.session_state.get("summary_error"):
-        if st.session_state.get("challenge_mode"):
-            st.markdown("### Summary & Critical Analysis")
-        else:
-            st.markdown("### Summary")
+        st.markdown("### Personalized Workforce Report")
 
         st.markdown(
             f"<div class='summary-card'>{st.session_state['summary'].replace(chr(10), '<br>')}</div>",
@@ -241,12 +258,20 @@ def main() -> None:
         )
 
         st.download_button(
-            "📥 Download Summary (.md)",
+            "Download MD File",
             data=st.session_state["summary"],
             file_name=st.session_state.get("summary_file_name", "sparce_summary.md"),
             mime="text/markdown",
             key="download_summary",
         )
+        if st.session_state.get("workforce_xlsx"):
+            st.download_button(
+                "Download Summary XLSX",
+                data=st.session_state["workforce_xlsx"],
+                file_name=st.session_state.get("xlsx_file_name", "workforce_summary.xlsx"),
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="download_workforce_xlsx",
+            )
 
 
 if __name__ == "__main__":

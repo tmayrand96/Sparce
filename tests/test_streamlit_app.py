@@ -19,3 +19,12 @@ def test_detect_document_format_for_image():
 
     assert file_type == "image"
     assert label == "Detected Format: JPEG Image"
+
+
+def test_detect_document_format_for_workforce_workbook():
+    uploaded_file = SimpleNamespace(name="workforce.xlsx")
+
+    file_type, label = detect_document_format(uploaded_file)
+
+    assert file_type == "xlsx"
+    assert label == "Detected Format: Excel Workforce Workbook"
