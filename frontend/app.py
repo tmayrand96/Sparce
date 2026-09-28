@@ -9,6 +9,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from backend.core.pipeline import process_document as run_pipeline
 from backend.core.workforce import (
     generate_summary_excel,
+    generate_topo_24h,
     parse_workforce_xlsx,
     query_gemini_analysis,
 )
@@ -220,6 +221,8 @@ def main() -> None:
                     st.session_state["summary_file_name"] = f"{original_name}_report.md"
                     st.session_state["xlsx_file_name"] = f"{original_name}_summary.xlsx"
                     st.session_state.pop("summary_error", None)
+                    st.session_state["report_generated"] = True
+                    st.session_state["topo_24h_content"] = None
                 except Exception as exc:
                     st.session_state["summary_error"] = f"Processing failed: {exc}"
                 uploaded_file = None
@@ -241,6 +244,8 @@ def main() -> None:
                     st.session_state["summary_file_name"] = (
                         f"{original_name}_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
                     )
+                    st.session_state["report_generated"] = True
+                    st.session_state["topo_24h_content"] = None
                 except Exception as exc:  # pragma: no cover - UI-level fallback
                     st.session_state["summary_error"] = f"Processing failed: {exc}"
                 finally:
@@ -272,6 +277,28 @@ def main() -> None:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="download_workforce_xlsx",
             )
+
+        if "topo_24h_content" not in st.session_state:
+            st.session_state["topo_24h_content"] = None
+
+        if st.session_state.get("report_generated"):
+            if st.session_state["topo_24h_content"] is None:
+                try:
+                    with st.spinner("Génération du Topo 24h en cours..."):
+                        st.session_state["topo_24h_content"] = generate_topo_24h(st.session_state["summary"])
+                except Exception as exc:
+                    st.session_state["topo_24h_content"] = None
+                    st.error(f"Topo 24h generation failed: {exc}")
+
+            if st.session_state.get("topo_24h_content"):
+                st.download_button(
+                    "Download Topo 24h",
+                    data=st.session_state["topo_24h_content"],
+                    file_name="Topo_RH_24h_Fleury.md",
+                    mime="text/markdown",
+                    key="download_topo_24h",
+                    use_container_width=True,
+                )
 
 
 if __name__ == "__main__":

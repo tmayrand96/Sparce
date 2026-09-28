@@ -199,6 +199,82 @@ def generate_summary_excel(df_besoins: pd.DataFrame, df_surplus: pd.DataFrame) -
     return output
 
 
+TOPO_24H_TEMPLATE = """Hôpital Fleury - état des RH 24 h
+
+SOIR
+
+•\t4e étage : Générez un rapport d'effectif sur cette ligne.
+•\t7e étage : Générez un rapport d'effectif sur cette ligne.
+•\t6e étage : Générez un rapport d'effectif sur cette ligne.
+•\t8e étage : Générez un rapport d'effectif sur cette ligne.
+•\tUrgence : Générez un rapport d'effectif sur cette ligne.
+•\tValider s'il y a débordement sur les unités.
+•\tValider s'il y a un service privé sur les étages.
+•\tValider s'il y a des équipes volantes à placer.
+
+NUIT
+
+•\t4e étage : Générez un rapport d'effectif sur cette ligne.
+•\t7e étage : Générez un rapport d'effectif sur cette ligne.
+•\t6e étage : Générez un rapport d'effectif sur cette ligne.
+•\t8e étage : Générez un rapport d'effectif sur cette ligne.
+•\tUrgence : Générez un rapport d'effectif sur cette ligne.
+•\tValider s'il y a débordement sur les unités.
+•\tValider s'il y a un service privé sur les étages.
+•\tValider s'il y a des équipes volantes à placer.
+
+JOUR
+
+•\t4e étage : Générez un rapport d'effectif sur cette ligne.
+•\t7e étage : Générez un rapport d'effectif sur cette ligne.
+•\t6e étage : Générez un rapport d'effectif sur cette ligne.
+•\t8e étage : Générez un rapport d'effectif sur cette ligne.
+•\tUrgence : Générez un rapport d'effectif sur cette ligne.
+•\tValider s'il y a débordement sur les unités.
+•\tValider s'il y a un service privé sur les étages.
+•\tValider s'il y a des équipes volantes à placer."""
+
+
+def generate_topo_24h(data_summary: str, api_key: Optional[str] = None) -> str:
+    """Ask Gemini to fill the strict Topo 24h hospital template from aggregated data.
+
+    Args:
+        data_summary: Textual synthesis (or JSON) of the workforce needs/surplus already computed.
+        api_key: Optional Google API key override.
+
+    Returns:
+        The completed Topo 24h Markdown document, respecting the mandatory template layout.
+
+    Raises:
+        RuntimeError: If the Gemini call fails or returns an unusable response.
+    """
+    if not data_summary or not isinstance(data_summary, str) or not data_summary.strip():
+        raise RuntimeError("Topo 24h impossible: aucune donnée d'effectif disponible.")
+
+    system_instruction = (
+        "Tu es un générateur de topo RH hospitalier. Tu dois reproduire EXACTEMENT le gabarit Markdown fourni, "
+        "sans en modifier la structure, les titres de quarts (SOIR, NUIT, JOUR), les puces ni leur ordre. "
+        "Pour chaque ligne contenant la mention « Générez un rapport d'effectif sur cette ligne. », remplace "
+        "uniquement cette mention par une synthèse concise (une phrase courte) de l'effectif présent, de la cible "
+        "et de l'écart calculé pour l'unité et le quart concernés, en te basant strictement sur les données fournies. "
+        "Si aucune donnée n'est disponible pour une unité/quart donné, indique « Aucune donnée disponible pour ce quart. » "
+        "Ne fabrique aucun chiffre. Conserve les lignes de validation (débordement, service privé, équipes volantes) "
+        "telles quelles ou complète-les brièvement si les données le permettent. Retourne uniquement le document Markdown final, "
+        "sans commentaire ni bloc de code additionnel.\n\n"
+        f"Gabarit à respecter:\n{TOPO_24H_TEMPLATE}"
+    )
+
+    try:
+        summarizer = GoogleGeminiSummarizer(api_key=api_key or os.getenv("GOOGLE_API_KEY"))
+        return summarizer.summarize(
+            f"Données agrégées de gestion des activités de remplacement:\n{data_summary}",
+            max_output_tokens=1500,
+            system_instruction=system_instruction,
+        )
+    except Exception as exc:
+        raise RuntimeError(f"Génération du Topo 24h impossible: {exc}") from exc
+
+
 def query_gemini_analysis(data_summary: dict, user_prompt: str = "", api_key: Optional[str] = None) -> str:
     """Ask Gemini for an executive workforce report based only on aggregated data."""
     if not isinstance(data_summary, dict) or not data_summary.get("lignes_analysees"):
