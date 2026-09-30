@@ -35,10 +35,25 @@ CATEGORY_ORDER = ["AA", "Inf", "Aux", "PAB"]
 
 # Emplacement par défaut du dictionnaire de cibles backend (utilisé si la découverte dynamique échoue).
 CIBLES_XLSX_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "Cibles.xlsx"
+
+# Les clés sont comparées aux en-têtes une fois nettoyés (strip + suppression des sauts de ligne + upper).
 CIBLES_COLUMN_RENAME_MAP = {
-    "Catégorie d'emploi": "Catégorie",
-    "Unité de soins": "Département",
+    "CATÉGORIE D'EMPLOI": "Catégorie",
+    "UNITÉ DE SOINS": "Département",
 }
+
+
+def _clean_column_headers(df: pd.DataFrame) -> pd.DataFrame:
+    """Strip whitespace/newlines and force uppercase headers to survive sloppy Excel input."""
+    df = df.copy()
+    df.columns = (
+        df.columns.astype(str)
+        .str.strip()
+        .str.replace("\n", "", regex=False)
+        .str.replace("\r", "", regex=False)
+        .str.upper()
+    )
+    return df
 
 
 def _find_project_root(start: Optional[Path] = None) -> Path:
@@ -186,8 +201,8 @@ def load_cibles_reference(path: Optional[Union[str, Path]] = None) -> Tuple[pd.D
     except Exception as exc:
         raise ValueError(f"Impossible de lire le fichier de référence Cibles.xlsx: {exc}") from exc
 
-    df_semaine = df_semaine.rename(columns=CIBLES_COLUMN_RENAME_MAP)
-    df_fin_semaine = df_fin_semaine.rename(columns=CIBLES_COLUMN_RENAME_MAP)
+    df_semaine = _clean_column_headers(df_semaine).rename(columns=CIBLES_COLUMN_RENAME_MAP)
+    df_fin_semaine = _clean_column_headers(df_fin_semaine).rename(columns=CIBLES_COLUMN_RENAME_MAP)
     return df_semaine, df_fin_semaine
 
 
@@ -200,11 +215,13 @@ def select_cibles_for_period(
     """Pick the Semaine or Fin de semaine dictionary based on the weekday and isolate the shift column."""
     df_source = df_semaine if date_selection.weekday() < 5 else df_fin_semaine
 
-    if quart_selection not in df_source.columns:
+    # Les en-têtes de quart ont déjà été nettoyés (strip + upper) au chargement; on aligne la clé de recherche.
+    quart_key = str(quart_selection).strip().upper()
+    if quart_key not in df_source.columns:
         raise ValueError(f"Quart '{quart_selection}' introuvable dans le dictionnaire de cibles.")
 
-    df_filtre = df_source[["Département", "Catégorie", quart_selection]].copy()
-    df_filtre = df_filtre.rename(columns={quart_selection: "Cible"})
+    df_filtre = df_source[["Département", "Catégorie", quart_key]].copy()
+    df_filtre = df_filtre.rename(columns={quart_key: "Cible"})
     return df_filtre
 
 
