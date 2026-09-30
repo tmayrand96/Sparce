@@ -7,7 +7,9 @@ from openpyxl import load_workbook
 from backend.core.workforce import (
     build_workforce_period_report,
     generate_summary_excel,
+    load_cibles_reference,
     parse_workforce_xlsx,
+    select_cibles_for_period,
 )
 
 
@@ -42,6 +44,37 @@ def _workbook_with_header_on_line_three():
         ).to_excel(writer, sheet_name="MARDI", header=False, index=False)
     output.seek(0)
     return output
+
+
+def test_load_cibles_reference_normalizes_canonical_french_headers(tmp_path):
+    reference_path = tmp_path / "Cibles.xlsx"
+    weekday_values = [
+        ["Département", "Catégorie", "JOUR", "SOIR", "NUIT"],
+        ["Unité A", "PAB", 4, 3, 2],
+    ]
+    weekend_values = [
+        ["Département", "Catégorie", "JOUR", "SOIR", "NUIT"],
+        ["Unité A", "PAB", 5, 4, 3],
+    ]
+    with pd.ExcelWriter(reference_path, engine="openpyxl") as writer:
+        pd.DataFrame(weekday_values).to_excel(
+            writer, sheet_name="Cibles", startrow=1, header=False, index=False
+        )
+        pd.DataFrame(weekend_values).to_excel(
+            writer, sheet_name="Cibles", startrow=1, startcol=6, header=False, index=False
+        )
+
+    df_semaine, df_fin_semaine = load_cibles_reference(reference_path)
+    selected = select_cibles_for_period(
+        df_semaine,
+        df_fin_semaine,
+        datetime.date(2026, 9, 21),
+        "JOUR",
+    )
+
+    assert selected.to_dict(orient="records") == [
+        {"Département": "Unité A", "Catégorie": "PAB", "Cible": 4}
+    ]
 
 
 def test_parse_workforce_xlsx_splits_needs_and_surplus():
