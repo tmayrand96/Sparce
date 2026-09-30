@@ -237,6 +237,12 @@ def parse_presences_xlsx(uploaded_file) -> pd.DataFrame:
     except Exception as exc:
         raise ValueError(f"Impossible de lire le fichier de présences: {exc}") from exc
 
+    return _parse_presences_sheet(df_raw)
+
+
+def _parse_presences_sheet(df_raw: pd.DataFrame) -> pd.DataFrame:
+    """Normalize and validate the presence table from one workbook sheet."""
+
     aliases = {
         "Département": {"département", "departement", "department", "unité", "unite", "unité de soins"},
         "Catégorie": {"catégorie", "categorie", "catégorie d'emploi", "emploi", "poste"},
@@ -263,7 +269,12 @@ def parse_presences_xlsx(uploaded_file) -> pd.DataFrame:
     if header_row_idx is None:
         raise ValueError("Structure invalide: colonne Département introuvable dans les lignes 0 à 5.")
 
-    positions = find_positions(df_raw.iloc[header_row_idx].values)
+    headers = [str(value).strip() for value in df_raw.iloc[header_row_idx].values]
+    headers = [
+        "Catégorie" if header.casefold() == "catégorie d'emploi".casefold() else header
+        for header in headers
+    ]
+    positions = find_positions(headers)
     if len(positions) != len(aliases):
         raise ValueError("Structure invalide: colonnes Département, Catégorie et Présences introuvables.")
 
@@ -289,7 +300,11 @@ def parse_presences_xlsx(uploaded_file) -> pd.DataFrame:
     if not records:
         raise ValueError("Aucune ligne de présence exploitable dans le fichier.")
 
-    return pd.DataFrame(records, columns=["Département", "Catégorie", "Présences"])
+    df_presences = pd.DataFrame(records, columns=["Département", "Catégorie", "Présences"])
+    required_cols = ["Département", "Catégorie", "Présences"]
+    if not all(column in df_presences.columns for column in required_cols):
+        raise ValueError(f"Schéma invalide. Colonnes requises: {required_cols}")
+    return df_presences
 
 
 def build_workforce_report(df_presences: pd.DataFrame, df_cibles_filtrees: pd.DataFrame) -> pd.DataFrame:
@@ -303,6 +318,54 @@ def build_workforce_report(df_presences: pd.DataFrame, df_cibles_filtrees: pd.Da
     df_final["Catégorie"] = pd.Categorical(df_final["Catégorie"], categories=CATEGORY_ORDER, ordered=True)
     df_final = df_final.sort_values(by=["Département", "Catégorie"]).reset_index(drop=True)
     return df_final
+
+
+def build_workforce_period_report(
+    uploaded_file,
+    start_date: datetime.date,
+    end_date: datetime.date,
+    df_semaine: pd.DataFrame,
+    df_fin_semaine: pd.DataFrame,
+    quart_selection: str,
+) -> pd.DataFrame:
+    """Build one chronologically ordered report from one presence sheet per date."""
+    if start_date > end_date:
+        raise ValueError("La date de début doit être antérieure ou égale à la date de fin.")
+    if hasattr(uploaded_file, "seek"):
+        uploaded_file.seek(0)
+    try:
+        worksheets = pd.read_excel(uploaded_file, sheet_name=None, header=None)
+    except Exception as exc:
+        raise ValueError(f"Impossible de lire les feuilles du fichier de présences: {exc}") from exc
+
+    dates = pd.date_range(start=start_date, end=end_date, freq="D")
+    if len(worksheets) != len(dates):
+        raise ValueError(
+            f"La période contient {len(dates)} jours, mais le classeur contient "
+            f"{len(worksheets)} feuilles. Une feuille par jour est requise."
+        )
+
+    daily_reports = []
+    for current_date, (sheet_name, df_raw) in zip(dates, worksheets.items()):
+        df_presences = _parse_presences_sheet(df_raw)
+        df_cibles = select_cibles_for_period(
+            df_semaine,
+            df_fin_semaine,
+            current_date.date(),
+            quart_selection,
+        )
+        df_daily = build_workforce_report(df_presences, df_cibles)
+        df_daily.insert(0, "Date", current_date.date())
+        df_daily.insert(0, "Jour", str(sheet_name))
+        daily_reports.append(df_daily)
+
+    df_final = pd.concat(daily_reports, ignore_index=True)
+    df_final["Catégorie"] = pd.Categorical(
+        df_final["Catégorie"], categories=CATEGORY_ORDER, ordered=True
+    )
+    return df_final.sort_values(
+        by=["Date", "Département", "Catégorie"]
+    ).reset_index(drop=True)
 
 
 def parse_workforce_xlsx(uploaded_file) -> Tuple[pd.DataFrame, pd.DataFrame, dict]:

@@ -1,9 +1,14 @@
+import datetime
 from io import BytesIO
 
 import pandas as pd
 from openpyxl import load_workbook
 
-from backend.core.workforce import generate_summary_excel, parse_workforce_xlsx
+from backend.core.workforce import (
+    build_workforce_period_report,
+    generate_summary_excel,
+    parse_workforce_xlsx,
+)
 
 
 def _workbook_bytes():
@@ -58,6 +63,42 @@ def test_parse_workforce_xlsx_uses_pandas_index_two_as_header():
     assert needs.iloc[0]["Besoins"] == 1
     assert surplus.empty
     assert summary["lignes_analysees"] == 1
+
+
+def test_build_workforce_period_report_normalizes_categories_and_selects_weekend_targets():
+    workbook_bytes = BytesIO()
+    with pd.ExcelWriter(workbook_bytes, engine="openpyxl") as writer:
+        for sheet_name in ("Vendredi", "Samedi"):
+            pd.DataFrame(
+                [
+                    ["Département", "Catégorie d'emploi", "Présences"],
+                    ["Unité A", "Inf", 3],
+                    ["Unité A", "AA", 2],
+                ]
+            ).to_excel(writer, sheet_name=sheet_name, header=False, index=False)
+    workbook_bytes.seek(0)
+
+    df_semaine = pd.DataFrame(
+        {"Département": ["Unité A", "Unité A"], "Catégorie": ["AA", "Inf"], "JOUR": [1, 2]}
+    )
+    df_fin_semaine = pd.DataFrame(
+        {"Département": ["Unité A", "Unité A"], "Catégorie": ["AA", "Inf"], "JOUR": [4, 5]}
+    )
+
+    df_final = build_workforce_period_report(
+        workbook_bytes,
+        datetime.date(2026, 9, 25),
+        datetime.date(2026, 9, 26),
+        df_semaine,
+        df_fin_semaine,
+        "JOUR",
+    )
+
+    assert df_final["Date"].tolist() == [datetime.date(2026, 9, 25)] * 2 + [
+        datetime.date(2026, 9, 26)
+    ] * 2
+    assert df_final["Catégorie"].astype(str).tolist() == ["AA", "Inf", "AA", "Inf"]
+    assert df_final["Cible"].tolist() == [1, 2, 4, 5]
 
 
 def test_generate_summary_excel_has_expected_sheets_and_formatting():

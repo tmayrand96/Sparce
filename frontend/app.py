@@ -8,13 +8,11 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from backend.core.pipeline import process_document as run_pipeline
 from backend.core.workforce import (
-    build_workforce_report,
+    build_workforce_period_report,
     generate_summary_excel,
     generate_topo_24h,
     load_cibles_reference,
-    parse_presences_xlsx,
     query_gemini_analysis,
-    select_cibles_for_period,
 )
 from tempfile import NamedTemporaryFile
 from typing import Optional, Tuple
@@ -177,7 +175,11 @@ def main() -> None:
 
     with st.sidebar:
         st.subheader("Configuration du rapport")
-        date_selection = st.date_input("Sélectionnez la date du rapport")
+        date_selection = st.date_input(
+            "Sélectionnez la période",
+            value=[],
+            help="Cliquez sur la date de début, puis sur la date de fin. Un troisième clic réinitialise.",
+        )
         quart_selection = st.selectbox("Type de quart", ["JOUR", "SOIR", "NUIT"])
 
     uploaded_file = st.file_uploader(
@@ -213,6 +215,10 @@ def main() -> None:
         )
 
     if st.button("Generate Personalized Workforce Report", type="primary", use_container_width=True, disabled=uploaded_file is None):
+        if len(date_selection) != 2:
+            st.warning("Veuillez sélectionner une date de début ET une date de fin pour générer le rapport.")
+            st.stop()
+        start_date, end_date = date_selection
         if uploaded_file is None:
             st.warning("Please upload a document before generating a summary.")
         else:
@@ -221,17 +227,21 @@ def main() -> None:
                 try:
                     with st.spinner("Transforming workforce workbook and generating report..."):
                         df_semaine, df_fin_semaine = load_cibles_reference()
-                        df_cibles_filtrees = select_cibles_for_period(
-                            df_semaine, df_fin_semaine, date_selection, quart_selection
+                        df_final = build_workforce_period_report(
+                            uploaded_file,
+                            start_date,
+                            end_date,
+                            df_semaine,
+                            df_fin_semaine,
+                            quart_selection,
                         )
-                        df_presences = parse_presences_xlsx(uploaded_file)
-                        df_final = build_workforce_report(df_presences, df_cibles_filtrees)
 
                         df_besoins = df_final[df_final["Besoins"] > 0].reset_index(drop=True)
                         df_surplus = df_final[df_final["Surplus"] > 0].reset_index(drop=True)
                         excel_output = generate_summary_excel(df_besoins, df_surplus)
                         data_summary = {
-                            "date": str(date_selection),
+                            "date_debut": str(start_date),
+                            "date_fin": str(end_date),
                             "quart": quart_selection,
                             "lignes_analysees": len(df_final),
                             "besoins": df_besoins.to_dict(orient="records"),
