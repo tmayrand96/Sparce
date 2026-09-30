@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import datetime
 import json
 import os
 import re
 from io import BytesIO
-from typing import Any, Dict, Optional, Tuple
+from pathlib import Path
+from typing import Any, Dict, Optional, Tuple, Union
 
 import pandas as pd
 from openpyxl.formatting.rule import CellIsRule
@@ -27,6 +29,17 @@ OUTPUT_COLUMNS = [
     "Besoins",
     "Surplus",
 ]
+
+# Ordre d'affichage strict des catégories d'emploi, imposé sur tout le module.
+CATEGORY_ORDER = ["AA", "Inf", "Aux", "PAB"]
+
+# Emplacement par défaut du dictionnaire de cibles backend.
+CIBLES_XLSX_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "Cibles.xlsx"
+
+CIBLES_COLUMN_RENAME_MAP = {
+    "Catégorie d'emploi": "Catégorie",
+    "Unité de soins": "Département",
+}
 
 
 def _normalized(value: Any) -> str:
@@ -107,6 +120,125 @@ def _number(value: Any) -> float:
     if isinstance(value, str):
         value = value.replace(" ", "").replace(",", ".")
     return float(value)
+
+
+def load_cibles_reference(path: Optional[Union[str, Path]] = None) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """Load the Semaine and Fin de semaine target dictionaries from Cibles.xlsx.
+
+    Raises:
+        FileNotFoundError: If the backend Cibles.xlsx workbook is missing.
+        ValueError: If the workbook cannot be parsed with the expected layout.
+    """
+    cibles_path = Path(path) if path is not None else CIBLES_XLSX_PATH
+    if not cibles_path.exists():
+        raise FileNotFoundError(f"Fichier de référence introuvable: {cibles_path}")
+
+    try:
+        df_semaine = pd.read_excel(cibles_path, usecols="A:E", skiprows=1)
+        df_fin_semaine = pd.read_excel(cibles_path, usecols="G:K", skiprows=1)
+    except Exception as exc:
+        raise ValueError(f"Impossible de lire le fichier de référence Cibles.xlsx: {exc}") from exc
+
+    df_semaine = df_semaine.rename(columns=CIBLES_COLUMN_RENAME_MAP)
+    df_fin_semaine = df_fin_semaine.rename(columns=CIBLES_COLUMN_RENAME_MAP)
+    return df_semaine, df_fin_semaine
+
+
+def select_cibles_for_period(
+    df_semaine: pd.DataFrame,
+    df_fin_semaine: pd.DataFrame,
+    date_selection: datetime.date,
+    quart_selection: str,
+) -> pd.DataFrame:
+    """Pick the Semaine or Fin de semaine dictionary based on the weekday and isolate the shift column."""
+    df_source = df_semaine if date_selection.weekday() < 5 else df_fin_semaine
+
+    if quart_selection not in df_source.columns:
+        raise ValueError(f"Quart '{quart_selection}' introuvable dans le dictionnaire de cibles.")
+
+    df_filtre = df_source[["Département", "Catégorie", quart_selection]].copy()
+    df_filtre = df_filtre.rename(columns={quart_selection: "Cible"})
+    return df_filtre
+
+
+def parse_presences_xlsx(uploaded_file) -> pd.DataFrame:
+    """Parse the simplified presences workbook (Département, Catégorie, Présences only)."""
+    if uploaded_file is None:
+        raise ValueError("Aucun fichier de présences fourni.")
+
+    if hasattr(uploaded_file, "seek"):
+        uploaded_file.seek(0)
+    try:
+        df_raw = pd.read_excel(uploaded_file, header=None)
+    except Exception as exc:
+        raise ValueError(f"Impossible de lire le fichier de présences: {exc}") from exc
+
+    aliases = {
+        "Département": {"département", "departement", "department", "unité", "unite", "unité de soins"},
+        "Catégorie": {"catégorie", "categorie", "catégorie d'emploi", "emploi", "poste"},
+        "Présences": {"présences", "presences", "présence", "presence", "effectif"},
+    }
+
+    def find_positions(columns: Any) -> dict[str, int]:
+        normalized = [_normalized(cell) for cell in columns]
+        positions: dict[str, int] = {}
+        for name, accepted in aliases.items():
+            for column_index, value in enumerate(normalized):
+                if value in accepted or any(alias in value for alias in accepted if len(alias) > 5):
+                    positions[name] = column_index
+                    break
+        return positions
+
+    header_row_idx = None
+    for row_index in range(min(6, len(df_raw.index))):
+        row = df_raw.iloc[row_index]
+        if any("département" in _normalized(value) for value in row):
+            header_row_idx = row_index
+            break
+
+    if header_row_idx is None:
+        raise ValueError("Structure invalide: colonne Département introuvable dans les lignes 0 à 5.")
+
+    positions = find_positions(df_raw.iloc[header_row_idx].values)
+    if len(positions) != len(aliases):
+        raise ValueError("Structure invalide: colonnes Département, Catégorie et Présences introuvables.")
+
+    records: list[dict[str, Any]] = []
+    for row in df_raw.iloc[header_row_idx + 1:].values.tolist():
+        values = {name: row[index] if index < len(row) else None for name, index in positions.items()}
+        if all(pd.isna(values[name]) or values[name] == "" for name in positions):
+            continue
+        if pd.isna(values["Département"]) or pd.isna(values["Catégorie"]):
+            continue
+        try:
+            presence = _number(values["Présences"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Ligne invalide dans le fichier de présences: {exc}") from exc
+        records.append(
+            {
+                "Département": str(values["Département"]).strip(),
+                "Catégorie": str(values["Catégorie"]).strip(),
+                "Présences": presence,
+            }
+        )
+
+    if not records:
+        raise ValueError("Aucune ligne de présence exploitable dans le fichier.")
+
+    return pd.DataFrame(records, columns=["Département", "Catégorie", "Présences"])
+
+
+def build_workforce_report(df_presences: pd.DataFrame, df_cibles_filtrees: pd.DataFrame) -> pd.DataFrame:
+    """Merge presences with the filtered targets dictionary and enforce the strict category order."""
+    df_final = pd.merge(df_presences, df_cibles_filtrees, on=["Département", "Catégorie"], how="left")
+    df_final["Cible"] = df_final["Cible"].fillna(0).astype(int)
+    df_final["Écart"] = df_final["Présences"] - df_final["Cible"]
+    df_final["Besoins"] = df_final["Écart"].apply(lambda value: abs(value) if value < 0 else 0)
+    df_final["Surplus"] = df_final["Écart"].apply(lambda value: value if value > 0 else 0)
+
+    df_final["Catégorie"] = pd.Categorical(df_final["Catégorie"], categories=CATEGORY_ORDER, ordered=True)
+    df_final = df_final.sort_values(by=["Département", "Catégorie"]).reset_index(drop=True)
+    return df_final
 
 
 def parse_workforce_xlsx(uploaded_file) -> Tuple[pd.DataFrame, pd.DataFrame, dict]:

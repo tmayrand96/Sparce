@@ -8,10 +8,13 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from backend.core.pipeline import process_document as run_pipeline
 from backend.core.workforce import (
+    build_workforce_report,
     generate_summary_excel,
     generate_topo_24h,
-    parse_workforce_xlsx,
+    load_cibles_reference,
+    parse_presences_xlsx,
     query_gemini_analysis,
+    select_cibles_for_period,
 )
 from tempfile import NamedTemporaryFile
 from typing import Optional, Tuple
@@ -172,6 +175,11 @@ def main() -> None:
     st.title("Module: Gestion des activités de remplacement")
     st.write("Importez un classeur Excel multi-feuilles pour analyser les besoins et les surplus.")
 
+    with st.sidebar:
+        st.subheader("Configuration du rapport")
+        date_selection = st.date_input("Sélectionnez la date du rapport")
+        quart_selection = st.selectbox("Type de quart", ["JOUR", "SOIR", "NUIT"])
+
     uploaded_file = st.file_uploader(
         "",
         type=["xlsx", "png", "jpg", "jpeg", "pdf"],
@@ -212,8 +220,23 @@ def main() -> None:
             if suffix == ".xlsx":
                 try:
                     with st.spinner("Transforming workforce workbook and generating report..."):
-                        df_besoins, df_surplus, data_summary = parse_workforce_xlsx(uploaded_file)
+                        df_semaine, df_fin_semaine = load_cibles_reference()
+                        df_cibles_filtrees = select_cibles_for_period(
+                            df_semaine, df_fin_semaine, date_selection, quart_selection
+                        )
+                        df_presences = parse_presences_xlsx(uploaded_file)
+                        df_final = build_workforce_report(df_presences, df_cibles_filtrees)
+
+                        df_besoins = df_final[df_final["Besoins"] > 0].reset_index(drop=True)
+                        df_surplus = df_final[df_final["Surplus"] > 0].reset_index(drop=True)
                         excel_output = generate_summary_excel(df_besoins, df_surplus)
+                        data_summary = {
+                            "date": str(date_selection),
+                            "quart": quart_selection,
+                            "lignes_analysees": len(df_final),
+                            "besoins": df_besoins.to_dict(orient="records"),
+                            "surplus": df_surplus.to_dict(orient="records"),
+                        }
                         summary = query_gemini_analysis(data_summary, custom_question)
                     st.session_state["summary"] = summary
                     st.session_state["workforce_xlsx"] = excel_output.getvalue()
@@ -223,6 +246,10 @@ def main() -> None:
                     st.session_state.pop("summary_error", None)
                     st.session_state["report_generated"] = True
                     st.session_state["topo_24h_content"] = None
+                except FileNotFoundError as exc:
+                    st.session_state["summary_error"] = f"Dictionnaire de cibles introuvable: {exc}"
+                except (ValueError, KeyError) as exc:
+                    st.session_state["summary_error"] = f"Erreur de traitement des données: {exc}"
                 except Exception as exc:
                     st.session_state["summary_error"] = f"Processing failed: {exc}"
                 uploaded_file = None
