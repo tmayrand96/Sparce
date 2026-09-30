@@ -33,12 +33,57 @@ OUTPUT_COLUMNS = [
 # Ordre d'affichage strict des catégories d'emploi, imposé sur tout le module.
 CATEGORY_ORDER = ["AA", "Inf", "Aux", "PAB"]
 
-# Emplacement par défaut du dictionnaire de cibles backend.
-CIBLES_XLSX_PATH = Path(__file__).resolve().parent.parent.parent / "tests" / "Cibles.xlsx"
+# Emplacement par défaut du dictionnaire de cibles backend (utilisé si la découverte dynamique échoue).
+CIBLES_XLSX_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "Cibles.xlsx"
 CIBLES_COLUMN_RENAME_MAP = {
     "Catégorie d'emploi": "Catégorie",
     "Unité de soins": "Département",
 }
+
+
+def _find_project_root(start: Optional[Path] = None) -> Path:
+    """Walk upward from this file to locate the project root (marked by .git or app.py)."""
+    current = (start or Path(__file__).resolve()).parent
+    for candidate in (current, *current.parents):
+        if (candidate / ".git").exists() or (candidate / "frontend" / "app.py").exists():
+            return candidate
+    return Path(__file__).resolve().parent.parent.parent
+
+
+def _discover_cibles_path(project_root: Optional[Path] = None) -> Optional[Path]:
+    """Recursively search the whole project tree, case-insensitively, for the reference workbook."""
+    root = project_root or _find_project_root()
+    matches = sorted(root.rglob("[cC]ibles.xlsx"))
+    return matches[0] if matches else None
+
+
+def _report_missing_cibles(project_root: Path) -> str:
+    """Build a diagnostic report (and surface it instantly via Streamlit) when Cibles.xlsx is unfindable."""
+    def _list_dir(relative: str) -> str:
+        target = project_root / relative
+        if not target.exists():
+            return f"  (répertoire '{relative}/' introuvable sous {project_root})"
+        entries = sorted(entry.name for entry in target.iterdir())
+        return "\n".join(f"  - {name}" for name in entries) if entries else "  (répertoire vide)"
+
+    diagnostic = (
+        "Fichier 'Cibles.xlsx' introuvable après recherche récursive dans le projet.\n\n"
+        f"Racine du projet analysée: {project_root}\n\n"
+        f"Contenu de 'tests/':\n{_list_dir('tests')}\n\n"
+        f"Contenu de 'data/':\n{_list_dir('data')}\n\n"
+        "Avertissement: si le fichier existe dans le dépôt Git mais reste introuvable en production, "
+        "vérifiez qu'il n'est pas exclu par .gitignore (les fichiers .xlsx y sont parfois listés)."
+    )
+
+    try:  # pragma: no cover - Streamlit not guaranteed to be importable in test contexts
+        import streamlit as st
+
+        st.error(diagnostic)
+    except Exception:
+        pass
+
+    return diagnostic
+
 
 
 def _normalized(value: Any) -> str:
@@ -125,12 +170,15 @@ def load_cibles_reference(path: Optional[Union[str, Path]] = None) -> Tuple[pd.D
     """Load the Semaine and Fin de semaine target dictionaries from Cibles.xlsx.
 
     Raises:
-        FileNotFoundError: If the backend Cibles.xlsx workbook is missing.
+        FileNotFoundError: If the backend Cibles.xlsx workbook cannot be located anywhere in the project.
         ValueError: If the workbook cannot be parsed with the expected layout.
     """
-    cibles_path = Path(path) if path is not None else CIBLES_XLSX_PATH
+    project_root = _find_project_root()
+    cibles_path = Path(path) if path is not None else (_discover_cibles_path(project_root) or CIBLES_XLSX_PATH)
+
     if not cibles_path.exists():
-        raise FileNotFoundError(f"Fichier de référence introuvable: {cibles_path}")
+        diagnostic = _report_missing_cibles(project_root)
+        raise FileNotFoundError(diagnostic)
 
     try:
         df_semaine = pd.read_excel(cibles_path, usecols="A:E", skiprows=1)
