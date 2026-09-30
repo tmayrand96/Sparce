@@ -39,8 +39,12 @@ CIBLES_XLSX_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "Cib
 # Les clés sont comparées aux en-têtes une fois nettoyés (strip + suppression des sauts de ligne + upper).
 CIBLES_COLUMN_RENAME_MAP = {
     "DÉPARTEMENT": "Département",
+    "DEPARTEMENT": "Département",
     "CATÉGORIE": "Catégorie",
     "CATÉGORIE D'EMPLOI": "Catégorie",
+    "UNITE": "Département",
+    "UNITÉ": "Département",
+    "UNITE DE SOINS": "Département",
     "UNITÉ DE SOINS": "Département",
 }
 

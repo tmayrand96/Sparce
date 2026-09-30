@@ -49,11 +49,11 @@ def _workbook_with_header_on_line_three():
 def test_load_cibles_reference_normalizes_canonical_french_headers(tmp_path):
     reference_path = tmp_path / "Cibles.xlsx"
     weekday_values = [
-        ["Département", "Catégorie", "JOUR", "SOIR", "NUIT"],
+        ["Departement", "Catégorie", "JOUR", "SOIR", "NUIT"],
         ["Unité A", "PAB", 4, 3, 2],
     ]
     weekend_values = [
-        ["Département", "Catégorie", "JOUR", "SOIR", "NUIT"],
+        ["Departement", "Catégorie", "JOUR", "SOIR", "NUIT"],
         ["Unité A", "PAB", 5, 4, 3],
     ]
     with pd.ExcelWriter(reference_path, engine="openpyxl") as writer:
