@@ -34,8 +34,7 @@ OUTPUT_COLUMNS = [
 CATEGORY_ORDER = ["AA", "Inf", "Aux", "PAB"]
 
 # Emplacement par défaut du dictionnaire de cibles backend.
-CIBLES_XLSX_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "Cibles.xlsx"
-
+CIBLES_XLSX_PATH = Path(__file__).resolve().parent.parent.parent / "tests" / "Cibles.xlsx"
 CIBLES_COLUMN_RENAME_MAP = {
     "Catégorie d'emploi": "Catégorie",
     "Unité de soins": "Département",
