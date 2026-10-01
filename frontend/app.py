@@ -11,7 +11,6 @@ from backend.core.workforce import (
     build_workforce_period_report,
     generate_summary_excel,
     generate_topo_24h,
-    get_available_quarts,
     load_cibles_reference,
     query_gemini_analysis,
 )
@@ -135,6 +134,17 @@ def _render_custom_css() -> None:
             border-color: var(--sparce-accent) !important;
             color: white !important;
         }
+        .stTextArea > div > div > textarea {
+            color: #477fa3 !important;
+            caret-color: #477fa3;
+        }
+        .date-range-instructions {
+            padding: 0.75rem 0.9rem;
+            border-radius: 8px;
+            background: var(--sparce-ink);
+            color: #ffffff !important;
+            margin-bottom: 0.75rem;
+        }
         .hero-card {
             border: 1px solid var(--sparce-border);
             border-radius: 8px;
@@ -190,7 +200,11 @@ def _render_custom_css() -> None:
 def _render_date_range_dialog() -> None:
     @st.dialog("Sélection de la période", width="small")
     def date_range_dialog() -> None:
-        st.caption("Choisissez la date de début, puis la date de fin. La période apparaîtra en surbrillance.")
+        st.markdown(
+            "<div class='date-range-instructions'>Choisissez la date de début, puis la date de fin. "
+            "La période apparaîtra en surbrillance.</div>",
+            unsafe_allow_html=True,
+        )
         dates = st.date_input(
             "Période",
             format="DD/MM/YYYY",
@@ -259,14 +273,7 @@ def main() -> None:
         quart_options = ["JOUR", "SOIR", "NUIT"]
         cibles_load_error: Optional[str] = None
         try:
-            df_semaine_sidebar, df_fin_semaine_sidebar = load_cibles_reference()
-            common_quarts = get_available_quarts(df_semaine_sidebar, df_fin_semaine_sidebar)
-            if common_quarts:
-                quart_options = common_quarts
-            else:
-                cibles_load_error = (
-                    "Aucun quart commun trouvé entre les tableaux Semaine et Fin de semaine de Cibles.xlsx."
-                )
+            load_cibles_reference()
         except (FileNotFoundError, ValueError) as exc:
             cibles_load_error = f"Dictionnaire de cibles indisponible: {exc}"
 

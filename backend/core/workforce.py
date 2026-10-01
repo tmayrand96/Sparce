@@ -202,32 +202,36 @@ def load_cibles_reference(path: Optional[Union[str, Path]] = None) -> Tuple[pd.D
         raise FileNotFoundError(diagnostic)
 
     try:
-        df_semaine = pd.read_excel(cibles_path, usecols="A:E", skiprows=1)
-        df_fin_semaine = pd.read_excel(cibles_path, usecols="G:K", skiprows=1)
+        # Lecture brute (sans usecols) car le tableau Semaine (A:E) et le tableau Fin de semaine
+        # (G:K) partagent des en-têtes identiques sur la même ligne: lire chaque plage séparément
+        # avec usecols pousse pandas à dédoublonner les en-têtes (ex: "Catégorie.1", "JOUR.1"),
+        # ce qui casse la correspondance de colonnes de quart pour le tableau Fin de semaine.
+        df_raw = pd.read_excel(cibles_path, header=None, skiprows=1)
     except Exception as exc:
         raise ValueError(f"Impossible de lire le fichier de référence Cibles.xlsx: {exc}") from exc
 
+    if df_raw.shape[1] < 11:
+        raise ValueError(
+            "Structure invalide: Cibles.xlsx doit contenir le tableau Semaine (colonnes A:E) "
+            "et le tableau Fin de semaine (colonnes G:K)."
+        )
+
+    def _build_table(column_slice: slice) -> pd.DataFrame:
+        block = df_raw.iloc[:, column_slice].copy()
+        block.columns = df_raw.iloc[0, column_slice].values
+        block = block.iloc[1:].reset_index(drop=True)
+        return block
+
+    df_semaine = _build_table(slice(0, 5))
+    df_fin_semaine = _build_table(slice(6, 11))
+
     df_semaine = _clean_column_headers(df_semaine).rename(columns=CIBLES_COLUMN_RENAME_MAP)
     df_fin_semaine = _clean_column_headers(df_fin_semaine).rename(columns=CIBLES_COLUMN_RENAME_MAP)
+
+    # Supprime les lignes totalement vides issues d'éventuelles cellules fantômes en fin de plage.
+    df_semaine = df_semaine.dropna(how="all").reset_index(drop=True)
+    df_fin_semaine = df_fin_semaine.dropna(how="all").reset_index(drop=True)
     return df_semaine, df_fin_semaine
-
-
-NON_QUART_COLUMNS = {"Département", "Catégorie"}
-
-
-def get_available_quarts(df_semaine: pd.DataFrame, df_fin_semaine: pd.DataFrame) -> list[str]:
-    """Return the shift names present in BOTH the Semaine and Fin de semaine tables.
-
-    This keeps the UI's shift selector consistent with the actual Cibles.xlsx content so a
-    date range mixing weekdays and weekend days can never land on a quart missing from either table.
-    """
-    quarts_semaine = {col for col in df_semaine.columns if col not in NON_QUART_COLUMNS}
-    quarts_fin_semaine = {col for col in df_fin_semaine.columns if col not in NON_QUART_COLUMNS}
-    common = quarts_semaine & quarts_fin_semaine
-    preferred_order = ["JOUR", "SOIR", "NUIT"]
-    ordered = [quart for quart in preferred_order if quart in common]
-    remaining = sorted(common - set(ordered))
-    return ordered + remaining
 
 
 def select_cibles_for_period(
@@ -246,8 +250,7 @@ def select_cibles_for_period(
     if quart_key not in df_source.columns:
         raise ValueError(
             f"Quart '{quart_selection}' introuvable dans le tableau '{table_label}' de Cibles.xlsx "
-            f"pour la date {date_selection.isoformat()}. Vérifiez que ce quart existe dans les DEUX "
-            "tableaux (Semaine et Fin de semaine) puisque la période sélectionnée mélange des jours des deux types."
+            f"pour la date {date_selection.isoformat()}."
         )
 
     df_filtre = df_source[["Département", "Catégorie", quart_key]].copy()
