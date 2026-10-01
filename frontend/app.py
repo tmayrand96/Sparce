@@ -60,16 +60,30 @@ def _render_custom_css() -> None:
     st.markdown(
         """
         <style>
-        .stApp, .st-emotion-cache-1wmy9hl, .st-emotion-cache-1y4p8pa, .st-emotion-cache-1r6slb0 {
-            background: #FFFFFF !important;
+        :root {
+            color-scheme: light;
+            --sparce-ink: #17332f;
+            --sparce-muted: #526763;
+            --sparce-accent: #087f6e;
+            --sparce-border: #cbd8d5;
+            --sparce-surface: #ffffff;
+            --sparce-page: #f3f7f6;
+        }
+        html, body, [class*="stApp"] {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        }
+        .stApp {
+            background: var(--sparce-page) !important;
+            color: var(--sparce-ink);
         }
         [data-testid="stSidebar"] {
-            background: #FFFFFF !important;
+            background: var(--sparce-surface) !important;
+            border-right: 1px solid var(--sparce-border);
         }
         .block-container {
             padding-top: 2rem;
             padding-bottom: 3rem;
-            max-width: 960px;
+            max-width: 1100px;
         }
         .stMarkdown, .stMarkdown p, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4, .stMarkdown h5, .stMarkdown h6,
         .stTextInput > div > div > input,
@@ -89,7 +103,7 @@ def _render_custom_css() -> None:
         .stDataFrame,
         .stDataFrame td,
         .stDataFrame th {
-            color: #000000 !important;
+            color: var(--sparce-ink) !important;
         }
         .stTextInput > div > div > input,
         .stTextArea > div > div > textarea,
@@ -100,8 +114,9 @@ def _render_custom_css() -> None:
         [data-testid="stDownloadButton"],
         .stDownloadButton > button,
         .stAlert {
-            background: #FFFFFF !important;
-            border: 1px solid #000000 !important;
+            background: var(--sparce-surface) !important;
+            border: 1px solid var(--sparce-border) !important;
+            border-radius: 8px !important;
         }
         .stButton button:hover,
         .stButton button:focus,
@@ -111,35 +126,53 @@ def _render_custom_css() -> None:
         .stSelectbox > div > div:focus,
         [data-testid="stFileUploader"]:focus-within,
         .stDownloadButton > button:focus {
-            background: #FFFFFF !important;
-            border-color: #000000 !important;
-            box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.2) !important;
+            background: var(--sparce-surface) !important;
+            border-color: var(--sparce-accent) !important;
+            box-shadow: 0 0 0 2px rgba(8, 127, 110, 0.18) !important;
+        }
+        .stButton button[kind="primary"] {
+            background: var(--sparce-accent) !important;
+            border-color: var(--sparce-accent) !important;
+            color: white !important;
         }
         .hero-card {
-            border: 1px solid #000000;
-            border-radius: 20px;
+            border: 1px solid var(--sparce-border);
+            border-radius: 8px;
             padding: 1.25rem 1.4rem;
-            background: #FFFFFF;
+            background: var(--sparce-surface);
             margin-bottom: 1rem;
         }
         .pill {
             display: inline-block;
             padding: 0.35rem 0.75rem;
             border-radius: 999px;
-            background: #FFFFFF;
-            color: #000000;
+            background: var(--sparce-surface);
+            color: var(--sparce-ink);
             font-weight: 600;
             margin-top: 0.35rem;
-            border: 1px solid #000000;
+            border: 1px solid var(--sparce-border);
         }
         .summary-card {
-            border: 1px solid #000000;
-            border-left: 4px solid #000000;
+            border: 1px solid var(--sparce-border);
+            border-left: 4px solid var(--sparce-accent);
             padding: 1rem 1.1rem;
-            border-radius: 16px;
-            background: #FFFFFF;
-            color: #000000;
+            border-radius: 8px;
+            background: var(--sparce-surface);
+            color: var(--sparce-ink);
             white-space: pre-wrap;
+        }
+        [data-testid="stDialog"] [data-testid="stDateInput"] {
+            width: 100%;
+        }
+        @media (max-width: 640px) {
+            .block-container {
+                padding: 1rem 1rem 2rem;
+            }
+            [data-testid="stDialog"] [role="dialog"] {
+                width: calc(100vw - 1rem);
+                max-width: calc(100vw - 1rem);
+                margin: 0.5rem;
+            }
         }
         img, svg, .logo-container, [data-testid="stImage"] {
             background: transparent !important;
@@ -152,6 +185,39 @@ def _render_custom_css() -> None:
         """,
         unsafe_allow_html=True,
     )
+
+
+def _render_date_range_dialog() -> None:
+    @st.dialog("Sélection de la période", width="small")
+    def date_range_dialog() -> None:
+        st.caption("Choisissez la date de début, puis la date de fin. La période apparaîtra en surbrillance.")
+        dates = st.date_input(
+            "Période",
+            format="DD/MM/YYYY",
+            key="pending_report_period",
+        )
+
+        if len(dates) != 2:
+            st.caption("Sélectionnez les deux dates pour confirmer.")
+
+        cancel_col, confirm_col = st.columns(2)
+        with cancel_col:
+            if st.button("Annuler", use_container_width=True, key="cancel_report_period"):
+                st.session_state["date_picker_open"] = False
+                st.rerun(scope="app")
+        with confirm_col:
+            if st.button(
+                "Ok ✅",
+                type="primary",
+                use_container_width=True,
+                disabled=len(dates) != 2,
+                key="confirm_report_period",
+            ):
+                st.session_state["report_period"] = tuple(dates)
+                st.session_state["date_picker_open"] = False
+                st.rerun(scope="app")
+
+    date_range_dialog()
 
 
 def main() -> None:
@@ -174,13 +240,21 @@ def main() -> None:
     st.title("Module: Gestion des activités de remplacement")
     st.write("Importez un classeur Excel multi-feuilles pour analyser les besoins et les surplus.")
 
+    if "report_period" not in st.session_state:
+        st.session_state["report_period"] = None
+    if "date_picker_open" not in st.session_state:
+        st.session_state["date_picker_open"] = False
+
     with st.sidebar:
         st.subheader("Configuration du rapport")
-        date_selection = st.date_input(
-            "Sélectionnez la période",
-            value=[],
-            help="Cliquez sur la date de début, puis sur la date de fin. Un troisième clic réinitialise.",
-        )
+        date_selection = st.session_state["report_period"] or ()
+        if date_selection:
+            period_label = f"{date_selection[0]:%d/%m/%Y} – {date_selection[1]:%d/%m/%Y}"
+        else:
+            period_label = "Choisir une période"
+        if st.button(f"📅  {period_label}", use_container_width=True, key="open_date_picker"):
+            st.session_state["pending_report_period"] = date_selection
+            st.session_state["date_picker_open"] = True
 
         quart_options = ["JOUR", "SOIR", "NUIT"]
         cibles_load_error: Optional[str] = None
@@ -201,8 +275,11 @@ def main() -> None:
 
         quart_selection = st.selectbox("Type de quart", quart_options, disabled=bool(cibles_load_error))
 
+    if st.session_state["date_picker_open"]:
+        _render_date_range_dialog()
+
     uploaded_file = st.file_uploader(
-        "",
+        "Importer un document",
         type=["xlsx", "png", "jpg", "jpeg", "pdf"],
         help="Drag and drop or browse device (Accepted formats: XLSX, PNG, JPEG, PDF)",
     )
