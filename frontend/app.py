@@ -11,6 +11,7 @@ from backend.core.workforce import (
     build_workforce_period_report,
     generate_summary_excel,
     generate_topo_24h,
+    get_available_quarts,
     load_cibles_reference,
     query_gemini_analysis,
 )
@@ -273,7 +274,14 @@ def main() -> None:
         quart_options = ["JOUR", "SOIR", "NUIT"]
         cibles_load_error: Optional[str] = None
         try:
-            load_cibles_reference()
+            df_semaine_sidebar, df_fin_semaine_sidebar = load_cibles_reference()
+            common_quarts = get_available_quarts(df_semaine_sidebar, df_fin_semaine_sidebar)
+            if common_quarts:
+                quart_options = common_quarts
+            else:
+                cibles_load_error = (
+                    "Aucun quart commun trouvé entre les tableaux Semaine et Fin de semaine de Cibles.xlsx."
+                )
         except (FileNotFoundError, ValueError) as exc:
             cibles_load_error = f"Dictionnaire de cibles indisponible: {exc}"
 

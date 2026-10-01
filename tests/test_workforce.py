@@ -77,6 +77,41 @@ def test_load_cibles_reference_normalizes_canonical_french_headers(tmp_path):
     ]
 
 
+def test_load_cibles_reference_tolerates_alternate_quart_header_spellings(tmp_path):
+    reference_path = tmp_path / "Cibles.xlsx"
+    # En-têtes "SOIR " (espace final) et "JOURS"/"NUITS" représentatifs des classeurs réels.
+    weekday_values = [
+        ["Département", "Catégorie", "JOUR", "SOIR ", "NUIT"],
+        ["Unité A", "PAB", 4, 3, 2],
+    ]
+    weekend_values = [
+        ["Département", "Catégorie", "JOURS", "SOIR", "NUITS"],
+        ["Unité A", "PAB", 5, 4, 3],
+    ]
+    with pd.ExcelWriter(reference_path, engine="openpyxl") as writer:
+        pd.DataFrame(weekday_values).to_excel(
+            writer, sheet_name="Cibles", startrow=1, header=False, index=False
+        )
+        pd.DataFrame(weekend_values).to_excel(
+            writer, sheet_name="Cibles", startrow=1, startcol=6, header=False, index=False
+        )
+
+    df_semaine, df_fin_semaine = load_cibles_reference(reference_path)
+
+    # La date tombe un samedi: le tableau Fin de semaine doit exposer un quart "NUIT" exploitable
+    # même si son en-tête réel est "NUITS".
+    selected = select_cibles_for_period(
+        df_semaine,
+        df_fin_semaine,
+        datetime.date(2026, 9, 26),
+        "NUIT",
+    )
+
+    assert selected.to_dict(orient="records") == [
+        {"Département": "Unité A", "Catégorie": "PAB", "Cible": 3}
+    ]
+
+
 def test_select_cibles_for_period_uses_selected_quart_and_matching_period_table():
     df_semaine = pd.DataFrame(
         {"Département": ["Unité A"], "Catégorie": ["PAB"], "JOUR": [2], "SOIR": [3], "NUIT": [1]}

@@ -48,6 +48,17 @@ CIBLES_COLUMN_RENAME_MAP = {
     "UNITÉ DE SOINS": "Département",
 }
 
+# Variantes tolérées des noms de quart (accents/pluriels/espaces déjà neutralisés par le nettoyage
+# des en-têtes); permet de faire correspondre un classeur Cibles.xlsx réel même si sa mise en forme
+# diverge légèrement du format canonique JOUR/SOIR/NUIT.
+QUART_HEADER_ALIASES = {
+    "JOUR": {"JOUR", "JOURS", "JR", "J"},
+    "SOIR": {"SOIR", "SOIRS", "PM", "S"},
+    "NUIT": {"NUIT", "NUITS", "N"},
+}
+
+NON_QUART_COLUMNS = {"Département", "Catégorie"}
+
 
 def _clean_column_headers(df: pd.DataFrame) -> pd.DataFrame:
     """Strip whitespace/newlines and force uppercase headers to survive sloppy Excel input."""
@@ -60,6 +71,19 @@ def _clean_column_headers(df: pd.DataFrame) -> pd.DataFrame:
         .str.upper()
     )
     return df
+
+
+def _rename_quart_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Map tolerated quart header variants (JOURS, JR, ...) onto the canonical JOUR/SOIR/NUIT names."""
+    rename_map: dict[str, str] = {}
+    for column in df.columns:
+        if column in NON_QUART_COLUMNS or column in QUART_HEADER_ALIASES:
+            continue
+        for canonical, aliases in QUART_HEADER_ALIASES.items():
+            if column in aliases:
+                rename_map[column] = canonical
+                break
+    return df.rename(columns=rename_map) if rename_map else df
 
 
 def _find_project_root(start: Optional[Path] = None) -> Path:
@@ -225,13 +249,30 @@ def load_cibles_reference(path: Optional[Union[str, Path]] = None) -> Tuple[pd.D
     df_semaine = _build_table(slice(0, 5))
     df_fin_semaine = _build_table(slice(6, 11))
 
-    df_semaine = _clean_column_headers(df_semaine).rename(columns=CIBLES_COLUMN_RENAME_MAP)
-    df_fin_semaine = _clean_column_headers(df_fin_semaine).rename(columns=CIBLES_COLUMN_RENAME_MAP)
+    df_semaine = _rename_quart_columns(_clean_column_headers(df_semaine).rename(columns=CIBLES_COLUMN_RENAME_MAP))
+    df_fin_semaine = _rename_quart_columns(
+        _clean_column_headers(df_fin_semaine).rename(columns=CIBLES_COLUMN_RENAME_MAP)
+    )
 
     # Supprime les lignes totalement vides issues d'éventuelles cellules fantômes en fin de plage.
     df_semaine = df_semaine.dropna(how="all").reset_index(drop=True)
     df_fin_semaine = df_fin_semaine.dropna(how="all").reset_index(drop=True)
     return df_semaine, df_fin_semaine
+
+
+def get_available_quarts(df_semaine: pd.DataFrame, df_fin_semaine: pd.DataFrame) -> list[str]:
+    """Return the shift names present in BOTH the Semaine and Fin de semaine tables.
+
+    This keeps the UI's shift selector consistent with the actual Cibles.xlsx content so a
+    date range mixing weekdays and weekend days can never land on a quart missing from either table.
+    """
+    quarts_semaine = {col for col in df_semaine.columns if col not in NON_QUART_COLUMNS}
+    quarts_fin_semaine = {col for col in df_fin_semaine.columns if col not in NON_QUART_COLUMNS}
+    common = quarts_semaine & quarts_fin_semaine
+    preferred_order = ["JOUR", "SOIR", "NUIT"]
+    ordered = [quart for quart in preferred_order if quart in common]
+    remaining = sorted(common - set(ordered))
+    return ordered + remaining
 
 
 def select_cibles_for_period(
@@ -248,9 +289,12 @@ def select_cibles_for_period(
     # Les en-têtes de quart ont déjà été nettoyés (strip + upper) au chargement; on aligne la clé de recherche.
     quart_key = str(quart_selection).strip().upper()
     if quart_key not in df_source.columns:
+        quarts_disponibles = sorted(col for col in df_source.columns if col not in NON_QUART_COLUMNS)
         raise ValueError(
             f"Quart '{quart_selection}' introuvable dans le tableau '{table_label}' de Cibles.xlsx "
-            f"pour la date {date_selection.isoformat()}."
+            f"pour la date {date_selection.isoformat()}. Quarts disponibles dans '{table_label}': "
+            f"{quarts_disponibles or 'aucun'}. Vérifiez que ce quart existe dans les DEUX tableaux "
+            "(Semaine et Fin de semaine) puisque la période sélectionnée peut mélanger des jours des deux types."
         )
 
     df_filtre = df_source[["Département", "Catégorie", quart_key]].copy()
