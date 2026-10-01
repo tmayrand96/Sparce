@@ -4,9 +4,12 @@ from io import BytesIO
 import pandas as pd
 from openpyxl import load_workbook
 
+import pytest
+
 from backend.core.workforce import (
     build_workforce_period_report,
     generate_summary_excel,
+    get_available_quarts,
     load_cibles_reference,
     parse_workforce_xlsx,
     select_cibles_for_period,
@@ -75,6 +78,31 @@ def test_load_cibles_reference_normalizes_canonical_french_headers(tmp_path):
     assert selected.to_dict(orient="records") == [
         {"Département": "Unité A", "Catégorie": "PAB", "Cible": 4}
     ]
+
+
+def test_get_available_quarts_returns_intersection_in_canonical_order():
+    df_semaine = pd.DataFrame(
+        {"Département": ["Unité A"], "Catégorie": ["PAB"], "NUIT": [1], "JOUR": [2], "SOIR": [3]}
+    )
+    df_fin_semaine = pd.DataFrame(
+        {"Département": ["Unité A"], "Catégorie": ["PAB"], "JOUR": [4], "SOIR": [5]}
+    )
+
+    assert get_available_quarts(df_semaine, df_fin_semaine) == ["JOUR", "SOIR"]
+
+
+def test_select_cibles_for_period_raises_clear_error_on_mismatched_quart():
+    df_semaine = pd.DataFrame(
+        {"Département": ["Unité A"], "Catégorie": ["PAB"], "JOUR": [2], "SOIR": [3], "NUIT": [1]}
+    )
+    df_fin_semaine = pd.DataFrame(
+        {"Département": ["Unité A"], "Catégorie": ["PAB"], "JOUR": [4], "SOIR": [5]}
+    )
+
+    with pytest.raises(ValueError, match="Fin de semaine"):
+        select_cibles_for_period(
+            df_semaine, df_fin_semaine, datetime.date(2026, 9, 26), "NUIT"
+        )
 
 
 def test_parse_workforce_xlsx_splits_needs_and_surplus():

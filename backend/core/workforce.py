@@ -212,6 +212,24 @@ def load_cibles_reference(path: Optional[Union[str, Path]] = None) -> Tuple[pd.D
     return df_semaine, df_fin_semaine
 
 
+NON_QUART_COLUMNS = {"Département", "Catégorie"}
+
+
+def get_available_quarts(df_semaine: pd.DataFrame, df_fin_semaine: pd.DataFrame) -> list[str]:
+    """Return the shift names present in BOTH the Semaine and Fin de semaine tables.
+
+    This keeps the UI's shift selector consistent with the actual Cibles.xlsx content so a
+    date range mixing weekdays and weekend days can never land on a quart missing from either table.
+    """
+    quarts_semaine = {col for col in df_semaine.columns if col not in NON_QUART_COLUMNS}
+    quarts_fin_semaine = {col for col in df_fin_semaine.columns if col not in NON_QUART_COLUMNS}
+    common = quarts_semaine & quarts_fin_semaine
+    preferred_order = ["JOUR", "SOIR", "NUIT"]
+    ordered = [quart for quart in preferred_order if quart in common]
+    remaining = sorted(common - set(ordered))
+    return ordered + remaining
+
+
 def select_cibles_for_period(
     df_semaine: pd.DataFrame,
     df_fin_semaine: pd.DataFrame,
@@ -219,12 +237,18 @@ def select_cibles_for_period(
     quart_selection: str,
 ) -> pd.DataFrame:
     """Pick the Semaine or Fin de semaine dictionary based on the weekday and isolate the shift column."""
-    df_source = df_semaine if date_selection.weekday() < 5 else df_fin_semaine
+    is_weekday = date_selection.weekday() < 5
+    df_source = df_semaine if is_weekday else df_fin_semaine
+    table_label = "Semaine" if is_weekday else "Fin de semaine"
 
     # Les en-têtes de quart ont déjà été nettoyés (strip + upper) au chargement; on aligne la clé de recherche.
     quart_key = str(quart_selection).strip().upper()
     if quart_key not in df_source.columns:
-        raise ValueError(f"Quart '{quart_selection}' introuvable dans le dictionnaire de cibles.")
+        raise ValueError(
+            f"Quart '{quart_selection}' introuvable dans le tableau '{table_label}' de Cibles.xlsx "
+            f"pour la date {date_selection.isoformat()}. Vérifiez que ce quart existe dans les DEUX "
+            "tableaux (Semaine et Fin de semaine) puisque la période sélectionnée mélange des jours des deux types."
+        )
 
     df_filtre = df_source[["Département", "Catégorie", quart_key]].copy()
     df_filtre = df_filtre.rename(columns={quart_key: "Cible"})
