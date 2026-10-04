@@ -267,6 +267,10 @@ def main() -> None:
             period_label = f"{date_selection[0]:%d/%m/%Y} – {date_selection[1]:%d/%m/%Y}"
         else:
             period_label = "Choisir une période"
+        st.markdown(
+            "<p style='color: #0073A9; font-weight: bold; margin-bottom: 0px;'>Sélecteur de date(s)</p>",
+            unsafe_allow_html=True,
+        )
         if st.button(f"📅  {period_label}", use_container_width=True, key="open_date_picker"):
             st.session_state["pending_report_period"] = date_selection
             st.session_state["date_picker_open"] = True
@@ -288,7 +292,16 @@ def main() -> None:
         if cibles_load_error:
             st.warning(cibles_load_error)
 
-        quart_selection = st.selectbox("Type de quart", quart_options, disabled=bool(cibles_load_error))
+        st.markdown(
+            "<p style='color: #0073A9; font-weight: bold; margin-bottom: 0px;'>Sélecteur de quart</p>",
+            unsafe_allow_html=True,
+        )
+        quart_selection = st.selectbox(
+            "Sélecteur de quart",
+            quart_options,
+            disabled=bool(cibles_load_error),
+            label_visibility="collapsed",
+        )
 
     if st.session_state["date_picker_open"]:
         _render_date_range_dialog()
