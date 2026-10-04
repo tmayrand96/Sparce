@@ -62,7 +62,7 @@ def _render_custom_css() -> None:
         <style>
         :root {
             color-scheme: light;
-            --sparce-ink: #17332f;
+            --sparce-ink: #0073A9;
             --sparce-muted: #526763;
             --sparce-accent: #087f6e;
             --sparce-border: #cbd8d5;
