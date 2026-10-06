@@ -445,6 +445,65 @@ def build_workforce_period_report(
     ).reset_index(drop=True)
 
 
+JOURS_FR = ["LUNDI", "MARDI", "MERCREDI", "JEUDI", "VENDREDI", "SAMEDI", "DIMANCHE"]
+ALL_QUARTS_LABEL = "Tous les quarts"
+
+
+def date_to_sheet_name(date_value: datetime.date) -> str:
+    """Translate a date into the uppercase French weekday used as Excel sheet name."""
+    return JOURS_FR[date_value.weekday()]
+
+
+def _infer_quart_from_filename(filename: str) -> str:
+    name = _normalized(filename).upper()
+    for quart in ("JOUR", "SOIR", "NUIT"):
+        if quart in name:
+            return quart
+    raise ValueError(
+        f"Impossible de déterminer le quart du fichier '{filename}'. "
+        "Le nom du fichier doit contenir JOUR, SOIR ou NUIT."
+    )
+
+
+def build_workforce_all_quarts_report(
+    uploaded_files,
+    start_date: datetime.date,
+    end_date: datetime.date,
+    df_semaine: pd.DataFrame,
+    df_fin_semaine: pd.DataFrame,
+) -> pd.DataFrame:
+    """Build one report from every uploaded workbook, reading the sheet named after each date's weekday."""
+    if start_date > end_date:
+        raise ValueError("La date de début doit être antérieure ou égale à la date de fin.")
+    if not uploaded_files:
+        raise ValueError("Aucun fichier de présences fourni.")
+
+    reports = []
+    for uploaded_file in uploaded_files:
+        file_name = getattr(uploaded_file, "name", "fichier")
+        quart = _infer_quart_from_filename(file_name)
+        for current_date in pd.date_range(start=start_date, end=end_date, freq="D"):
+            sheet_name = date_to_sheet_name(current_date.date())
+            if hasattr(uploaded_file, "seek"):
+                uploaded_file.seek(0)
+            try:
+                df_raw = pd.read_excel(uploaded_file, sheet_name=sheet_name, header=None)
+            except Exception as exc:
+                raise ValueError(
+                    f"Impossible de lire l'onglet '{sheet_name}' du fichier '{file_name}': {exc}"
+                ) from exc
+            df_presences = _parse_presences_sheet(df_raw)
+            df_cibles = select_cibles_for_period(df_semaine, df_fin_semaine, current_date.date(), quart)
+            df_daily = build_workforce_report(df_presences, df_cibles)
+            df_daily.insert(0, "Date", current_date.date())
+            df_daily.insert(0, "Jour", sheet_name)
+            reports.append(df_daily)
+
+    df_final = pd.concat(reports, ignore_index=True)
+    df_final["Catégorie"] = pd.Categorical(df_final["Catégorie"], categories=CATEGORY_ORDER, ordered=True)
+    return df_final.sort_values(by=["Date", "Département", "Catégorie"]).reset_index(drop=True)
+
+
 def parse_workforce_xlsx(uploaded_file) -> Tuple[pd.DataFrame, pd.DataFrame, dict]:
     """Parse all workbook sheets into needs, surplus, and metadata summaries."""
     if uploaded_file is None:

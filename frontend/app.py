@@ -8,6 +8,8 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from backend.core.pipeline import process_document as run_pipeline
 from backend.core.workforce import (
+    ALL_QUARTS_LABEL,
+    build_workforce_all_quarts_report,
     build_workforce_period_report,
     generate_summary_excel,
     generate_topo_24h,
@@ -281,7 +283,7 @@ def main() -> None:
             df_semaine_sidebar, df_fin_semaine_sidebar = load_cibles_reference()
             common_quarts = get_available_quarts(df_semaine_sidebar, df_fin_semaine_sidebar)
             if common_quarts:
-                quart_options = common_quarts
+                quart_options = common_quarts + [ALL_QUARTS_LABEL]
             else:
                 cibles_load_error = (
                     "Aucun quart commun trouvé entre les tableaux Semaine et Fin de semaine de Cibles.xlsx."
@@ -306,11 +308,14 @@ def main() -> None:
     if st.session_state["date_picker_open"]:
         _render_date_range_dialog()
 
-    uploaded_file = st.file_uploader(
+    uploaded_files = st.file_uploader(
         "Importer un document",
         type=["xlsx", "png", "jpg", "jpeg", "pdf"],
         help="Drag and drop or browse device (Accepted formats: XLSX, PNG, JPEG, PDF)",
+        accept_multiple_files=True,
     )
+    uploaded_files = list(uploaded_files or [])
+    uploaded_file = uploaded_files[0] if uploaded_files else None
 
     if uploaded_file is not None:
         file_type, label = detect_document_format(uploaded_file)
@@ -351,14 +356,23 @@ def main() -> None:
                 try:
                     with st.spinner("Transforming workforce workbook and generating report..."):
                         df_semaine, df_fin_semaine = load_cibles_reference()
-                        df_final = build_workforce_period_report(
-                            uploaded_file,
-                            start_date,
-                            end_date,
-                            df_semaine,
-                            df_fin_semaine,
-                            quart_selection,
-                        )
+                        if quart_selection == ALL_QUARTS_LABEL:
+                            df_final = build_workforce_all_quarts_report(
+                                uploaded_files,
+                                start_date,
+                                end_date,
+                                df_semaine,
+                                df_fin_semaine,
+                            )
+                        else:
+                            df_final = build_workforce_period_report(
+                                uploaded_file,
+                                start_date,
+                                end_date,
+                                df_semaine,
+                                df_fin_semaine,
+                                quart_selection,
+                            )
 
                         df_besoins = df_final[df_final["Besoins"] > 0].reset_index(drop=True)
                         df_surplus = df_final[df_final["Surplus"] > 0].reset_index(drop=True)
