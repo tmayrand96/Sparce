@@ -9,7 +9,8 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from backend.core.pipeline import process_document as run_pipeline
 from backend.core.workforce import (
     ALL_QUARTS_LABEL,
-    build_workforce_all_quarts_report,
+    build_workforce_file_report,
+    finalize_all_quarts_report,
     build_workforce_period_report,
     generate_summary_excel,
     generate_topo_24h,
@@ -357,13 +358,29 @@ def main() -> None:
                     with st.spinner("Transforming workforce workbook and generating report..."):
                         df_semaine, df_fin_semaine = load_cibles_reference()
                         if quart_selection == ALL_QUARTS_LABEL:
-                            df_final = build_workforce_all_quarts_report(
-                                uploaded_files,
-                                start_date,
-                                end_date,
-                                df_semaine,
-                                df_fin_semaine,
-                            )
+                            quart_reports = []
+                            for file in uploaded_files:
+                                file_name_upper = file.name.upper()
+                                if "JOUR" in file_name_upper:
+                                    file_quart = "JOUR"
+                                elif "SOIR" in file_name_upper:
+                                    file_quart = "SOIR"
+                                elif "NUIT" in file_name_upper:
+                                    file_quart = "NUIT"
+                                else:
+                                    st.warning(f"Fichier ignoré (nomenclature non reconnue) : {file.name}")
+                                    continue
+                                quart_reports.append(
+                                    build_workforce_file_report(
+                                        file,
+                                        file_quart,
+                                        start_date,
+                                        end_date,
+                                        df_semaine,
+                                        df_fin_semaine,
+                                    )
+                                )
+                            df_final = finalize_all_quarts_report(quart_reports)
                         else:
                             df_final = build_workforce_period_report(
                                 uploaded_file,

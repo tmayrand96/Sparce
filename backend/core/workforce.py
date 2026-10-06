@@ -465,6 +465,45 @@ def _infer_quart_from_filename(filename: str) -> str:
     )
 
 
+def build_workforce_file_report(
+    uploaded_file,
+    quart: str,
+    start_date: datetime.date,
+    end_date: datetime.date,
+    df_semaine: pd.DataFrame,
+    df_fin_semaine: pd.DataFrame,
+) -> pd.DataFrame:
+    """Build the daily reports of one workbook for a given quart (sheet named after each weekday)."""
+    file_name = getattr(uploaded_file, "name", "fichier")
+    reports = []
+    for current_date in pd.date_range(start=start_date, end=end_date, freq="D"):
+        sheet_name = date_to_sheet_name(current_date.date())
+        if hasattr(uploaded_file, "seek"):
+            uploaded_file.seek(0)
+        try:
+            df_raw = pd.read_excel(uploaded_file, sheet_name=sheet_name, header=None)
+        except Exception as exc:
+            raise ValueError(
+                f"Impossible de lire l'onglet '{sheet_name}' du fichier '{file_name}': {exc}"
+            ) from exc
+        df_presences = _parse_presences_sheet(df_raw)
+        df_cibles = select_cibles_for_period(df_semaine, df_fin_semaine, current_date.date(), quart)
+        df_daily = build_workforce_report(df_presences, df_cibles)
+        df_daily.insert(0, "Date", current_date.date())
+        df_daily.insert(0, "Jour", sheet_name)
+        reports.append(df_daily)
+    return pd.concat(reports, ignore_index=True)
+
+
+def finalize_all_quarts_report(reports: list) -> pd.DataFrame:
+    """Merge per-file reports into one chronologically ordered report."""
+    if not reports:
+        raise ValueError("Aucun fichier de présences reconnu (le nom doit contenir JOUR, SOIR ou NUIT).")
+    df_final = pd.concat(reports, ignore_index=True)
+    df_final["Catégorie"] = pd.Categorical(df_final["Catégorie"], categories=CATEGORY_ORDER, ordered=True)
+    return df_final.sort_values(by=["Date", "Département", "Catégorie"]).reset_index(drop=True)
+
+
 def build_workforce_all_quarts_report(
     uploaded_files,
     start_date: datetime.date,
@@ -477,31 +516,14 @@ def build_workforce_all_quarts_report(
         raise ValueError("La date de début doit être antérieure ou égale à la date de fin.")
     if not uploaded_files:
         raise ValueError("Aucun fichier de présences fourni.")
-
-    reports = []
-    for uploaded_file in uploaded_files:
-        file_name = getattr(uploaded_file, "name", "fichier")
-        quart = _infer_quart_from_filename(file_name)
-        for current_date in pd.date_range(start=start_date, end=end_date, freq="D"):
-            sheet_name = date_to_sheet_name(current_date.date())
-            if hasattr(uploaded_file, "seek"):
-                uploaded_file.seek(0)
-            try:
-                df_raw = pd.read_excel(uploaded_file, sheet_name=sheet_name, header=None)
-            except Exception as exc:
-                raise ValueError(
-                    f"Impossible de lire l'onglet '{sheet_name}' du fichier '{file_name}': {exc}"
-                ) from exc
-            df_presences = _parse_presences_sheet(df_raw)
-            df_cibles = select_cibles_for_period(df_semaine, df_fin_semaine, current_date.date(), quart)
-            df_daily = build_workforce_report(df_presences, df_cibles)
-            df_daily.insert(0, "Date", current_date.date())
-            df_daily.insert(0, "Jour", sheet_name)
-            reports.append(df_daily)
-
-    df_final = pd.concat(reports, ignore_index=True)
-    df_final["Catégorie"] = pd.Categorical(df_final["Catégorie"], categories=CATEGORY_ORDER, ordered=True)
-    return df_final.sort_values(by=["Date", "Département", "Catégorie"]).reset_index(drop=True)
+    reports = [
+        build_workforce_file_report(
+            f, _infer_quart_from_filename(getattr(f, "name", "fichier")),
+            start_date, end_date, df_semaine, df_fin_semaine,
+        )
+        for f in uploaded_files
+    ]
+    return finalize_all_quarts_report(reports)
 
 
 def parse_workforce_xlsx(uploaded_file) -> Tuple[pd.DataFrame, pd.DataFrame, dict]:
