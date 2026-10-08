@@ -15,6 +15,7 @@ from backend.core.workforce import (
     build_workforce_period_report,
     generate_summary_excel,
     generate_topo_24h,
+    CATEGORY_ORDER,
     TOPO_24H_TITLE,
     get_available_quarts,
     load_cibles_reference,
@@ -501,7 +502,34 @@ def main() -> None:
                                     ensure_ascii=False,
                                     default=str,
                                 )
-                                topo_sections.append(generate_topo_24h(quart_summary, quart=quart))
+                                topo_section = generate_topo_24h(quart_summary, quart=quart)
+                                ecarts = (
+                                    df_quart[df_quart["Écart"] != 0]
+                                    .groupby(["Département", "Catégorie"], as_index=False)["Écart"]
+                                    .sum()
+                                )
+                                anomalies = []
+                                for departement, df_dept in ecarts.groupby("Département", sort=False):
+                                    for type_ecart, masque in (
+                                        ("Manque", df_dept["Écart"] < 0),
+                                        ("Surplus", df_dept["Écart"] > 0),
+                                    ):
+                                        df_type = df_dept[masque]
+                                        if df_type.empty:
+                                            continue
+                                        df_type = df_type.assign(
+                                            _ordre=df_type["Catégorie"].map(
+                                                lambda c: CATEGORY_ORDER.index(c) if c in CATEGORY_ORDER else len(CATEGORY_ORDER)
+                                            )
+                                        ).sort_values("_ordre")
+                                        total = abs(int(df_type["Écart"].sum()))
+                                        detail = ", ".join(
+                                            f"{row['Catégorie']}: {int(row['Écart'])}" for _, row in df_type.iterrows()
+                                        )
+                                        anomalies.append(f"- **{departement}** : {type_ecart} de {total} (Détail : {detail})")
+                                if anomalies:
+                                    topo_section += "\n\n" + "\n".join(anomalies)
+                                topo_sections.append(topo_section)
                             master_md = "\n\n---\n\n".join([TOPO_24H_TITLE, *topo_sections])
                             st.session_state["topo_24h_content"] = master_md
                             st.session_state["topo_24h_file_name"] = "Topo_24h_Global.md"
