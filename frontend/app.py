@@ -488,29 +488,31 @@ def main() -> None:
                     with st.spinner("Génération du Topo 24h en cours..."):
                         quart_frames = st.session_state.get("quart_frames") or {}
                         if quart_frames:
-                            notes_operationnelles = (
-                                "- Valider s'il y a débordement sur les unités.\n"
-                                "- Valider s'il y a un service privé sur les étages.\n"
-                                "- Valider s'il y a des équipes volantes à placer."
-                            )
-                            sections_par_date = []
-                            frames_par_date = {}
-                            for quart, df_quart in quart_frames.items():
-                                for date_value in df_quart["Date"].dropna().unique():
-                                    frames_par_date.setdefault(date_value, {})[quart] = df_quart[
-                                        df_quart["Date"] == date_value
-                                    ]
-
-                            for date_value in sorted(frames_par_date):
-                                sections_par_quart = [f"## Date : {date_value}"]
-                                for quart in ("JOUR", "SOIR", "NUIT"):
-                                    df_quart = frames_par_date[date_value].get(quart)
-                                    if df_quart is None:
-                                        continue
-
+                            sections_par_quart = []
+                            for quart in ("JOUR", "SOIR", "NUIT"):
+                                df_quart = quart_frames.get(quart)
+                                if df_quart is None:
+                                    continue
+                                df_quart = df_quart.copy()
+                                df_quart["_date"] = pd.to_datetime(df_quart["Date"])
+                                df_quart["_date_formatee"] = df_quart["_date"].dt.strftime(
+                                    "%d-%m-%Y"
+                                )
+                                df_quart = df_quart.sort_values("_date")
+                                sections_par_date = [f"# QUART DE {quart}"]
+                                for date_value, df_date in df_quart.groupby(
+                                    "_date_formatee", sort=False
+                                ):
                                     ecarts = (
-                                        df_quart.loc[df_quart["Écart"] != 0, ["Département", "Catégorie", "Écart"]]
-                                        .groupby(["Département", "Catégorie"], as_index=False, sort=False)["Écart"]
+                                        df_date.loc[
+                                            df_date["Écart"] != 0,
+                                            ["Département", "Catégorie", "Écart"],
+                                        ]
+                                        .groupby(
+                                            ["Département", "Catégorie"],
+                                            as_index=False,
+                                            sort=False,
+                                        )["Écart"]
                                         .sum()
                                     )
                                     anomalies = []
@@ -536,17 +538,18 @@ def main() -> None:
                                             f"(Détails : {details})"
                                         )
 
-                                    quart_section = (
-                                        f"### Quart : {quart}\n\n"
-                                        f"{notes_operationnelles}"
-                                    )
+                                    date_section = f"### {date_value}"
                                     if anomalies:
-                                        quart_section += "\n\n" + "\n".join(anomalies)
-                                    sections_par_quart.append(quart_section)
-                                sections_par_date.append("\n\n".join(sections_par_quart))
+                                        date_section += "\n" + "\n".join(anomalies)
+                                    sections_par_date.append(date_section)
+                                sections_par_quart.append("\n\n".join(sections_par_date))
 
-                            master_md = "\n\n---\n\n".join(
-                                [TOPO_24H_TITLE, *sections_par_date]
+                            master_md = "\n\n".join([TOPO_24H_TITLE, *sections_par_quart])
+                            master_md += (
+                                "\n\n---\n"
+                                "- Valider s'il y a débordement sur les unités.\n"
+                                "- Valider s'il y a un service privé sur les étages.\n"
+                                "- Valider s'il y a des équipes volantes à placer."
                             )
                             st.session_state["topo_24h_content"] = master_md
                             st.session_state["topo_24h_file_name"] = "Topo_24h_Global.md"
