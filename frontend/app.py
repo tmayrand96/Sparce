@@ -1,4 +1,4 @@
-import json
+
 import sys
 from datetime import datetime
 from io import BytesIO
@@ -488,49 +488,66 @@ def main() -> None:
                     with st.spinner("Génération du Topo 24h en cours..."):
                         quart_frames = st.session_state.get("quart_frames") or {}
                         if quart_frames:
-                            topo_sections = []
-                            for quart in ("JOUR", "SOIR", "NUIT"):
-                                df_quart = quart_frames.get(quart)
-                                if df_quart is None:
-                                    continue
-                                quart_summary = json.dumps(
-                                    {
-                                        "quart": quart,
-                                        "besoins": df_quart[df_quart["Besoins"] > 0].to_dict(orient="records"),
-                                        "surplus": df_quart[df_quart["Surplus"] > 0].to_dict(orient="records"),
-                                    },
-                                    ensure_ascii=False,
-                                    default=str,
-                                )
-                                topo_section = generate_topo_24h(quart_summary, quart=quart)
-                                ecarts = (
-                                    df_quart[df_quart["Écart"] != 0]
-                                    .groupby(["Département", "Catégorie"], as_index=False)["Écart"]
-                                    .sum()
-                                )
-                                anomalies = []
-                                for departement, df_dept in ecarts.groupby("Département", sort=False):
-                                    for type_ecart, masque in (
-                                        ("Manque", df_dept["Écart"] < 0),
-                                        ("Surplus", df_dept["Écart"] > 0),
+                            notes_operationnelles = (
+                                "- Valider s'il y a débordement sur les unités.\n"
+                                "- Valider s'il y a un service privé sur les étages.\n"
+                                "- Valider s'il y a des équipes volantes à placer."
+                            )
+                            sections_par_date = []
+                            frames_par_date = {}
+                            for quart, df_quart in quart_frames.items():
+                                for date_value in df_quart["Date"].dropna().unique():
+                                    frames_par_date.setdefault(date_value, {})[quart] = df_quart[
+                                        df_quart["Date"] == date_value
+                                    ]
+
+                            for date_value in sorted(frames_par_date):
+                                sections_par_quart = [f"## Date : {date_value}"]
+                                for quart in ("JOUR", "SOIR", "NUIT"):
+                                    df_quart = frames_par_date[date_value].get(quart)
+                                    if df_quart is None:
+                                        continue
+
+                                    ecarts = (
+                                        df_quart.loc[df_quart["Écart"] != 0, ["Département", "Catégorie", "Écart"]]
+                                        .groupby(["Département", "Catégorie"], as_index=False, sort=False)["Écart"]
+                                        .sum()
+                                    )
+                                    anomalies = []
+                                    for departement, df_departement in ecarts.groupby(
+                                        "Département", sort=False
                                     ):
-                                        df_type = df_dept[masque]
-                                        if df_type.empty:
-                                            continue
-                                        df_type = df_type.assign(
-                                            _ordre=df_type["Catégorie"].map(
-                                                lambda c: CATEGORY_ORDER.index(c) if c in CATEGORY_ORDER else len(CATEGORY_ORDER)
+                                        df_departement = df_departement.assign(
+                                            _ordre=df_departement["Catégorie"].map(
+                                                lambda categorie: (
+                                                    CATEGORY_ORDER.index(categorie)
+                                                    if categorie in CATEGORY_ORDER
+                                                    else len(CATEGORY_ORDER)
+                                                )
                                             )
                                         ).sort_values("_ordre")
-                                        total = abs(int(df_type["Écart"].sum()))
-                                        detail = ", ".join(
-                                            f"{row['Catégorie']}: {int(row['Écart'])}" for _, row in df_type.iterrows()
+                                        total_ecart = int(df_departement["Écart"].sum())
+                                        details = ", ".join(
+                                            f"{row['Catégorie']}: {int(row['Écart'])}"
+                                            for _, row in df_departement.iterrows()
                                         )
-                                        anomalies.append(f"- **{departement}** : {type_ecart} de {total} (Détail : {detail})")
-                                if anomalies:
-                                    topo_section += "\n\n" + "\n".join(anomalies)
-                                topo_sections.append(topo_section)
-                            master_md = "\n\n---\n\n".join([TOPO_24H_TITLE, *topo_sections])
+                                        anomalies.append(
+                                            f"- **{departement}** : {total_ecart} "
+                                            f"(Détails : {details})"
+                                        )
+
+                                    quart_section = (
+                                        f"### Quart : {quart}\n\n"
+                                        f"{notes_operationnelles}"
+                                    )
+                                    if anomalies:
+                                        quart_section += "\n\n" + "\n".join(anomalies)
+                                    sections_par_quart.append(quart_section)
+                                sections_par_date.append("\n\n".join(sections_par_quart))
+
+                            master_md = "\n\n---\n\n".join(
+                                [TOPO_24H_TITLE, *sections_par_date]
+                            )
                             st.session_state["topo_24h_content"] = master_md
                             st.session_state["topo_24h_file_name"] = "Topo_24h_Global.md"
                         else:
