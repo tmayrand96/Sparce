@@ -621,7 +621,9 @@ def generate_summary_excel(df_besoins: pd.DataFrame, df_surplus: pd.DataFrame) -
     return output
 
 
-TOPO_24H_TEMPLATE = """Hôpital Fleury - état des RH 24 h
+TOPO_24H_TITLE = "Hôpital Fleury - état des RH 24 h"
+
+TOPO_24H_TEMPLATE = TOPO_24H_TITLE + """
 
 SOIR
 
@@ -657,12 +659,22 @@ JOUR
 •\tValider s'il y a des équipes volantes à placer."""
 
 
-def generate_topo_24h(data_summary: str, api_key: Optional[str] = None) -> str:
+def _topo_template_for_quart(quart: str) -> str:
+    """Return only the section of TOPO_24H_TEMPLATE belonging to the given quart."""
+    blocks = TOPO_24H_TEMPLATE.split("\n\n")[1:]
+    sections = dict(zip(blocks[0::2], blocks[1::2]))
+    if quart not in sections:
+        raise ValueError(f"Quart inconnu pour le Topo 24h: {quart}")
+    return f"{quart}\n\n{sections[quart]}"
+
+
+def generate_topo_24h(data_summary: str, api_key: Optional[str] = None, quart: Optional[str] = None) -> str:
     """Ask Gemini to fill the strict Topo 24h hospital template from aggregated data.
 
     Args:
         data_summary: Textual synthesis (or JSON) of the workforce needs/surplus already computed.
         api_key: Optional Google API key override.
+        quart: Optional quart (JOUR, SOIR, NUIT); restricts the template to that single section.
 
     Returns:
         The completed Topo 24h Markdown document, respecting the mandatory template layout.
@@ -673,6 +685,7 @@ def generate_topo_24h(data_summary: str, api_key: Optional[str] = None) -> str:
     if not data_summary or not isinstance(data_summary, str) or not data_summary.strip():
         raise RuntimeError("Topo 24h impossible: aucune donnée d'effectif disponible.")
 
+    template = _topo_template_for_quart(quart) if quart else TOPO_24H_TEMPLATE
     system_instruction = (
         "Tu es un générateur de topo RH hospitalier. Tu dois reproduire EXACTEMENT le gabarit Markdown fourni, "
         "sans en modifier la structure, les titres de quarts (SOIR, NUIT, JOUR), les puces ni leur ordre. "
@@ -683,7 +696,7 @@ def generate_topo_24h(data_summary: str, api_key: Optional[str] = None) -> str:
         "Ne fabrique aucun chiffre. Conserve les lignes de validation (débordement, service privé, équipes volantes) "
         "telles quelles ou complète-les brièvement si les données le permettent. Retourne uniquement le document Markdown final, "
         "sans commentaire ni bloc de code additionnel.\n\n"
-        f"Gabarit à respecter:\n{TOPO_24H_TEMPLATE}"
+        f"Gabarit à respecter:\n{template}"
     )
 
     try:

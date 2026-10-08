@@ -1,3 +1,4 @@
+import json
 import sys
 from datetime import datetime
 from io import BytesIO
@@ -14,6 +15,7 @@ from backend.core.workforce import (
     build_workforce_period_report,
     generate_summary_excel,
     generate_topo_24h,
+    TOPO_24H_TITLE,
     get_available_quarts,
     load_cibles_reference,
     query_gemini_analysis,
@@ -21,6 +23,7 @@ from backend.core.workforce import (
 from tempfile import NamedTemporaryFile
 from typing import Optional, Tuple
 
+import pandas as pd
 from PIL import Image, ImageOps
 
 try:
@@ -357,6 +360,7 @@ def main() -> None:
                 try:
                     with st.spinner("Transforming workforce workbook and generating report..."):
                         df_semaine, df_fin_semaine = load_cibles_reference()
+                        quart_frames = {}
                         if quart_selection == ALL_QUARTS_LABEL:
                             quart_reports = []
                             for file in uploaded_files:
@@ -380,7 +384,9 @@ def main() -> None:
                                 )
                                 if not file_report.empty:
                                     quart_reports.append(file_report)
+                                    quart_frames.setdefault(file_quart, []).append(file_report)
                             df_final = finalize_all_quarts_report(quart_reports)
+                            quart_frames = {q: pd.concat(frames, ignore_index=True) for q, frames in quart_frames.items()}
                         else:
                             df_final = build_workforce_period_report(
                                 uploaded_file,
@@ -411,6 +417,7 @@ def main() -> None:
                     st.session_state.pop("summary_error", None)
                     st.session_state["report_generated"] = True
                     st.session_state["topo_24h_content"] = None
+                    st.session_state["quart_frames"] = quart_frames
                 except FileNotFoundError as exc:
                     st.session_state["summary_error"] = f"Dictionnaire de cibles introuvable: {exc}"
                 except (ValueError, KeyError) as exc:
@@ -438,6 +445,7 @@ def main() -> None:
                     )
                     st.session_state["report_generated"] = True
                     st.session_state["topo_24h_content"] = None
+                    st.session_state["quart_frames"] = {}
                 except Exception as exc:  # pragma: no cover - UI-level fallback
                     st.session_state["summary_error"] = f"Processing failed: {exc}"
                 finally:
@@ -477,7 +485,29 @@ def main() -> None:
             if st.session_state["topo_24h_content"] is None:
                 try:
                     with st.spinner("Génération du Topo 24h en cours..."):
-                        st.session_state["topo_24h_content"] = generate_topo_24h(st.session_state["summary"])
+                        quart_frames = st.session_state.get("quart_frames") or {}
+                        if quart_frames:
+                            topo_sections = []
+                            for quart in ("JOUR", "SOIR", "NUIT"):
+                                df_quart = quart_frames.get(quart)
+                                if df_quart is None:
+                                    continue
+                                quart_summary = json.dumps(
+                                    {
+                                        "quart": quart,
+                                        "besoins": df_quart[df_quart["Besoins"] > 0].to_dict(orient="records"),
+                                        "surplus": df_quart[df_quart["Surplus"] > 0].to_dict(orient="records"),
+                                    },
+                                    ensure_ascii=False,
+                                    default=str,
+                                )
+                                topo_sections.append(generate_topo_24h(quart_summary, quart=quart))
+                            master_md = "\n\n---\n\n".join([TOPO_24H_TITLE, *topo_sections])
+                            st.session_state["topo_24h_content"] = master_md
+                            st.session_state["topo_24h_file_name"] = "Topo_24h_Global.md"
+                        else:
+                            st.session_state["topo_24h_content"] = generate_topo_24h(st.session_state["summary"])
+                            st.session_state["topo_24h_file_name"] = "Topo_RH_24h_Fleury.md"
                 except Exception as exc:
                     st.session_state["topo_24h_content"] = None
                     st.error(f"Topo 24h generation failed: {exc}")
@@ -486,7 +516,7 @@ def main() -> None:
                 st.download_button(
                     "Download Topo 24h",
                     data=st.session_state["topo_24h_content"],
-                    file_name="Topo_RH_24h_Fleury.md",
+                    file_name=st.session_state.get("topo_24h_file_name", "Topo_RH_24h_Fleury.md"),
                     mime="text/markdown",
                     key="download_topo_24h",
                     use_container_width=True,
