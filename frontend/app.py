@@ -370,16 +370,16 @@ def main() -> None:
                                 else:
                                     st.warning(f"Fichier ignoré (nomenclature non reconnue) : {file.name}")
                                     continue
-                                quart_reports.append(
-                                    build_workforce_file_report(
-                                        file,
-                                        file_quart,
-                                        start_date,
-                                        end_date,
-                                        df_semaine,
-                                        df_fin_semaine,
-                                    )
+                                file_report = build_workforce_file_report(
+                                    file,
+                                    file_quart,
+                                    start_date,
+                                    end_date,
+                                    df_semaine,
+                                    df_fin_semaine,
                                 )
+                                if not file_report.empty:
+                                    quart_reports.append(file_report)
                             df_final = finalize_all_quarts_report(quart_reports)
                         else:
                             df_final = build_workforce_period_report(

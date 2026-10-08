@@ -475,23 +475,27 @@ def build_workforce_file_report(
 ) -> pd.DataFrame:
     """Build the daily reports of one workbook for a given quart (sheet named after each weekday)."""
     file_name = getattr(uploaded_file, "name", "fichier")
+    if hasattr(uploaded_file, "seek"):
+        uploaded_file.seek(0)
+    try:
+        xls = pd.ExcelFile(uploaded_file)
+    except Exception as exc:
+        raise ValueError(f"Impossible d'ouvrir le fichier '{file_name}': {exc}") from exc
+    onglets_disponibles = xls.sheet_names
     reports = []
     for current_date in pd.date_range(start=start_date, end=end_date, freq="D"):
         sheet_name = date_to_sheet_name(current_date.date())
-        if hasattr(uploaded_file, "seek"):
-            uploaded_file.seek(0)
-        try:
-            df_raw = pd.read_excel(uploaded_file, sheet_name=sheet_name, header=None)
-        except Exception as exc:
-            raise ValueError(
-                f"Impossible de lire l'onglet '{sheet_name}' du fichier '{file_name}': {exc}"
-            ) from exc
+        if sheet_name not in onglets_disponibles:
+            continue
+        df_raw = pd.read_excel(xls, sheet_name=sheet_name, header=None)
         df_presences = _parse_presences_sheet(df_raw)
         df_cibles = select_cibles_for_period(df_semaine, df_fin_semaine, current_date.date(), quart)
         df_daily = build_workforce_report(df_presences, df_cibles)
         df_daily.insert(0, "Date", current_date.date())
         df_daily.insert(0, "Jour", sheet_name)
         reports.append(df_daily)
+    if not reports:
+        return pd.DataFrame()
     return pd.concat(reports, ignore_index=True)
 
 
@@ -523,6 +527,7 @@ def build_workforce_all_quarts_report(
         )
         for f in uploaded_files
     ]
+    reports = [r for r in reports if not r.empty]
     return finalize_all_quarts_report(reports)
 
 
