@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from pathlib import Path
@@ -60,3 +60,24 @@ def test_extract_text_from_pdf_uses_pdf_parser(tmp_path):
 
     assert result == expected_result
     mock_parse.assert_called_once_with(pdf_path)
+
+
+def test_extract_text_uses_exif_transpose(tmp_path):
+    image_path = tmp_path / "sample.png"
+    image_path.write_bytes(b"fake-png")
+
+    mock_image = MagicMock()
+    mock_image.__enter__.return_value = mock_image
+    mock_image.__exit__.return_value = None
+    mock_image_to_string = MagicMock(return_value="ocr result")
+
+    with patch("backend.core.ocr_engine.Image.open", return_value=mock_image) as mock_open, \
+         patch("backend.core.ocr_engine.ImageOps.exif_transpose", return_value=mock_image) as mock_exif, \
+         patch("backend.core.ocr_engine.pytesseract.image_to_string", mock_image_to_string):
+        engine = OCREngine()
+        result = engine.extract_text(image_path)
+
+    assert result["status"] == "success"
+    assert result["raw_text"] == "ocr result"
+    mock_exif.assert_called_once_with(mock_image)
+    assert mock_open.call_count >= 1

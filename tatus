@@ -1,0 +1,4 @@
+[35mbackend/core/workforce.py[m[36m:[m[32m37[m[36m:[mCIBLES_XLSX_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "[1;31mCibles.xlsx[m"
+[35mbackend/core/workforce.py[m[36m:[m[32m126[m[36m:[m    """Load the Semaine and Fin de semaine target dictionaries from [1;31mCibles.xlsx[m.
+[35mbackend/core/workforce.py[m[36m:[m[32m129[m[36m:[m        FileNotFoundError: If the backend [1;31mCibles.xlsx[m workbook is missing.
+[35mbackend/core/workforce.py[m[36m:[m[32m140[m[36m:[m        raise ValueError(f"Impossible de lire le fichier de référence [1;31mCibles.xlsx[m: {exc}") from exc
