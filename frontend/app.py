@@ -310,31 +310,35 @@ def main() -> None:
             label_visibility="collapsed",
         )
 
-    st.sidebar.markdown(
+st.sidebar.markdown(
         """
         <style>
         @import url('https://fonts.googleapis.com/css2?family=Oooh+Baby&display=swap');
-        .sidebar-signature-footer {
-            position: fixed;
-            bottom: 1rem;
-            left: 0;
+
+        [data-testid="stSidebar"],
+        [data-testid="stSidebarUserContent"] {
+            overflow-x: hidden;
+        }
+
+        .sidebar-signature {
+            display: block;
+            position: relative;
             width: 100%;
-            max-width: inherit;
+            max-width: 100%;
             box-sizing: border-box;
-            padding: 0 1.25rem;
-            font-family: 'Oooh Baby', cursive;
-            font-size: 1.3rem;
-            color: #0073A9;
+            padding: 0.5rem 1rem;
             overflow: hidden;
-            text-overflow: ellipsis;
             white-space: nowrap;
-            z-index: 99;
+            text-overflow: ellipsis;
+            text-align: left;
+            font-family: 'Oooh Baby', cursive;
+            font-size: clamp(0.95rem, 1.4vw, 1.25rem);
+            color: #0073A9;
             pointer-events: none;
+            z-index: 10;
         }
         </style>
-        <div class="sidebar-signature-footer">
-            Web app designed and optimized by Tristan Mayrand
-        </div>
+        <div class="sidebar-signature">Web app designed and optimized by Tristan Mayrand</div>
         """,
         unsafe_allow_html=True,
     )
