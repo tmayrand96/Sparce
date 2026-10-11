@@ -310,6 +310,35 @@ def main() -> None:
             label_visibility="collapsed",
         )
 
+    st.sidebar.markdown(
+        """
+        <style>
+        @import url('https://fonts.googleapis.com/css2?family=Oooh+Baby&display=swap');
+        .sidebar-signature-footer {
+            position: fixed;
+            bottom: 1rem;
+            left: 0;
+            width: 100%;
+            max-width: inherit;
+            box-sizing: border-box;
+            padding: 0 1.25rem;
+            font-family: 'Oooh Baby', cursive;
+            font-size: 1.3rem;
+            color: #0073A9;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            z-index: 99;
+            pointer-events: none;
+        }
+        </style>
+        <div class="sidebar-signature-footer">
+            Web app designed and optimized by Tristan Mayrand
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     if st.session_state["date_picker_open"]:
         _render_date_range_dialog()
 
