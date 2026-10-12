@@ -268,7 +268,10 @@ def main() -> None:
         st.session_state["date_picker_open"] = False
 
     with st.sidebar:
-        st.subheader("Configuration du rapport")
+        st.markdown(
+            "<h3 class='config-rapport-title'>Configuration du rapport</h3>",
+            unsafe_allow_html=True,
+        )
         date_selection = st.session_state["report_period"] or ()
         if date_selection:
             period_label = f"{date_selection[0]:%d/%m/%Y} – {date_selection[1]:%d/%m/%Y}"
@@ -320,20 +323,44 @@ def main() -> None:
                 overflow-x: hidden;
             }
 
-            .sidebar-signature {
+            [data-testid="stSidebar"] h1,
+            [data-testid="stSidebar"] h2,
+            [data-testid="stSidebar"] h3,
+            [data-testid="stSidebar"] h3 *,
+            [data-testid="stSidebar"] .config-rapport-title,
+            [data-testid="stSidebar"] .config-rapport-title * {
+                color: #0073A9 !important;
+                -webkit-text-fill-color: #0073A9 !important;
+            }
+
+            [data-testid="stSidebar"] [data-baseweb="select"] *,
+            [data-testid="stSidebar"] [data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+            [data-testid="stSidebar"] [data-testid="stSelectbox"] label,
+            [data-testid="stSidebar"] [data-testid="stMultiSelect"] label,
+            [data-testid="stSidebar"] p,
+            [data-testid="stSidebar"] span {
+                color: #0073A9 !important;
+                -webkit-text-fill-color: #0073A9 !important;
+            }
+
+            .st-emotion-cache-1ix68xf.etxdrby0,
+            [data-testid="stSidebar"] .sidebar-signature,
+            [data-testid="stSidebar"] .sidebar-signature-footer {
                 display: block;
                 position: relative;
-                width: 100%;
-                max-width: 100%;
-                box-sizing: border-box;
                 padding: 0.5rem 1rem;
-                overflow: hidden;
-                white-space: nowrap;
-                text-overflow: ellipsis;
                 text-align: left;
-                font-family: 'Oooh Baby', cursive;
                 font-size: clamp(0.95rem, 1.4vw, 1.25rem);
-                color: #0073A9;
+                white-space: normal !important;
+                word-wrap: break-word !important;
+                overflow-wrap: anywhere !important;
+                width: 100% !important;
+                max-width: 100% !important;
+                box-sizing: border-box !important;
+                line-height: 1.25 !important;
+                font-family: 'Oooh Baby', cursive !important;
+                color: #0073A9 !important;
+                -webkit-text-fill-color: #0073A9 !important;
                 pointer-events: none;
                 z-index: 10;
             }
