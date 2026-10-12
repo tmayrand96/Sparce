@@ -11,6 +11,10 @@
         "/^python3 -m py_compile frontend/app\\.py && echo OK$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^python3 -m py_compile frontend/app\\.py && echo OK; grep -nP '\\\\xc2\\\\xa0' frontend/app\\.py \\| wc -l$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }

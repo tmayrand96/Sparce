@@ -278,7 +278,7 @@ def main() -> None:
         else:
             period_label = "Choisir une période"
         st.markdown(
-            "<p style='color: #0073A9; font-weight: bold; margin-bottom: 0px;'>Sélecteur de date(s)</p>",
+            "<p class='sidebar-field-label' style='color: #0073A9; font-weight: bold; margin-bottom: 0px;'>Sélecteur de date(s)</p>",
             unsafe_allow_html=True,
         )
         if st.button(f"📅  {period_label}", use_container_width=True, key="open_date_picker"):
@@ -303,7 +303,7 @@ def main() -> None:
             st.warning(cibles_load_error)
 
         st.markdown(
-            "<p style='color: #0073A9; font-weight: bold; margin-bottom: 0px;'>Sélecteur de quart</p>",
+            "<p class='sidebar-field-label' style='color: #0073A9; font-weight: bold; margin-bottom: 0px;'>Sélecteur de quart</p>",
             unsafe_allow_html=True,
         )
         quart_selection = st.selectbox(
@@ -341,6 +341,12 @@ def main() -> None:
             [data-testid="stSidebar"] span {
                 color: #0073A9 !important;
                 -webkit-text-fill-color: #0073A9 !important;
+            }
+
+            [data-testid="stSidebar"] [data-testid="stWidgetLabel"],
+            [data-testid="stSidebar"] [data-testid="stWidgetLabel"] p,
+            [data-testid="stSidebar"] .sidebar-field-label {
+                font-family: Arial, sans-serif !important;
             }
 
             .st-emotion-cache-1ix68xf.etxdrby0,
