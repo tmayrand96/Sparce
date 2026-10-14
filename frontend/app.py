@@ -52,12 +52,15 @@ def detect_document_format(uploaded_file) -> Tuple[str, str]:
     return "unknown", "Detected Format: Unsupported Format"
 
 
-def _get_logo_path() -> Optional[Path]:
-    base_dir = Path(__file__).resolve().parent
-    logo_path = base_dir / "assets" / "SPARCE-AI-LOGO.png"
-    if logo_path.exists():
-        return logo_path
-    return None
+def _render_logo() -> None:
+    current_dir = Path(__file__).parent.resolve()
+    logo_path = current_dir / "assets" / "SPARCE-AI-LOGO.png"
+    try:
+        image = Image.open(logo_path)
+        st.image(image, use_container_width=True)
+    except FileNotFoundError:
+        st.error(f"Asset missing at: {logo_path}")
+        st.title("Sparce AI")
 
 
 def _render_custom_css() -> None:
@@ -249,14 +252,9 @@ def main() -> None:
     st.set_page_config(page_title="Sparce AI", page_icon="🚀", layout="wide")
     _render_custom_css()
 
-    logo_path = _get_logo_path()
-
     logo_col_1, logo_col_2, logo_col_3 = st.columns([1, 2, 1])
     with logo_col_2:
-        if logo_path is not None:
-            st.image(str(logo_path), width=280)
-        else:
-            st.title("Sparce AI")
+        _render_logo()
         st.caption("Workforce planning and replacement activity intelligence")
 
     st.title("Module: Gestion des activités de remplacement")
