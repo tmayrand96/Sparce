@@ -265,7 +265,11 @@ def main() -> None:
     logo_col_1, logo_col_2, logo_col_3 = st.columns([1, 2, 1])
     with logo_col_2:
         _render_logo()
-        st.caption("Workforce planning and replacement activity intelligence")
+        st.markdown(
+            "<div style='text-align: center; color: rgba(49, 51, 63, 0.6); font-size: 0.875rem;'>"
+            "Workforce planning and replacement activity intelligence</div>",
+            unsafe_allow_html=True,
+        )
 
     st.title("Module: Gestion des activités de remplacement")
     st.write("Importez un classeur Excel multi-feuilles pour analyser les besoins et les surplus.")
