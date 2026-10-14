@@ -1,4 +1,5 @@
 
+import base64
 import sys
 from datetime import datetime
 from io import BytesIO
@@ -56,8 +57,17 @@ def _render_logo() -> None:
     current_dir = Path(__file__).parent.resolve()
     logo_path = current_dir / "assets" / "SPARCE-AI-LOGO.png"
     try:
-        image = Image.open(logo_path)
-        st.image(image, width=200)
+        with open(logo_path, "rb") as img_file:
+            img_base64 = base64.b64encode(img_file.read()).decode()
+
+        st.markdown(
+            f'''
+            <div style="text-align: center; margin-bottom: 1rem;">
+                <img src="data:image/png;base64,{img_base64}" width="200" alt="Sparce AI Logo">
+            </div>
+            ''',
+            unsafe_allow_html=True,
+        )
     except FileNotFoundError:
         st.error(f"Asset missing at: {logo_path}")
         st.title("Sparce AI")
