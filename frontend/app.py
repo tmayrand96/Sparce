@@ -57,7 +57,7 @@ def _render_logo() -> None:
     logo_path = current_dir / "assets" / "SPARCE-AI-LOGO.png"
     try:
         image = Image.open(logo_path)
-        st.image(image, use_container_width=True)
+        st.image(image, width=200)
     except FileNotFoundError:
         st.error(f"Asset missing at: {logo_path}")
         st.title("Sparce AI")
