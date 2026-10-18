@@ -34,6 +34,141 @@ except ImportError:  # pragma: no cover - defensive fallback for test environmen
     st = None
 
 
+def format_delta(val) -> str:
+    """Format a delta for display: surplus gets a '+' prefix."""
+    try:
+        val_int = int(val)
+        return f"+{val_int}" if val_int > 0 else str(val_int)
+    except (ValueError, TypeError):
+        return str(val)
+
+
+def _collect_quart_reports(uploaded_files, start_date, end_date, df_semaine, df_fin_semaine, warn=False):
+    """Build per-file reports for the xlsx files, grouped by the quart found in the file name."""
+    quart_reports = []
+    frames_by_quart = {}
+    for file in uploaded_files:
+        if Path(file.name).suffix.lower() != ".xlsx":
+            continue
+        file_name_upper = file.name.upper()
+        if "JOUR" in file_name_upper:
+            file_quart = "JOUR"
+        elif "SOIR" in file_name_upper:
+            file_quart = "SOIR"
+        elif "NUIT" in file_name_upper:
+            file_quart = "NUIT"
+        else:
+            if warn:
+                st.warning(f"Fichier ignoré (nomenclature non reconnue) : {file.name}")
+            continue
+        file_report = build_workforce_file_report(
+            file, file_quart, start_date, end_date, df_semaine, df_fin_semaine
+        )
+        if not file_report.empty:
+            quart_reports.append(file_report)
+            frames_by_quart.setdefault(file_quart, []).append(file_report)
+    quart_frames = {q: pd.concat(frames, ignore_index=True) for q, frames in frames_by_quart.items()}
+    return quart_reports, quart_frames
+
+
+def _build_topo_24h_markdown(quart_frames) -> str:
+    sections_par_quart = []
+    for quart in ("JOUR", "SOIR", "NUIT"):
+        df_quart = quart_frames.get(quart)
+        if df_quart is None:
+            continue
+        df_quart = df_quart.copy()
+        df_quart["_date"] = pd.to_datetime(df_quart["Date"])
+        df_quart["_date_formatee"] = df_quart["_date"].dt.strftime("%d-%m-%Y")
+        df_quart = df_quart.sort_values("_date")
+        sections_par_date = [f"# QUART DE {quart}"]
+        for date_value, df_date in df_quart.groupby("_date_formatee", sort=False):
+            ecarts = (
+                df_date.loc[df_date["Écart"] != 0, ["Département", "Catégorie", "Écart"]]
+                .groupby(["Département", "Catégorie"], as_index=False, sort=False)["Écart"]
+                .sum()
+            )
+            anomalies = []
+            for departement, df_departement in ecarts.groupby("Département", sort=False):
+                df_departement = df_departement.assign(
+                    _ordre=df_departement["Catégorie"].map(
+                        lambda categorie: (
+                            CATEGORY_ORDER.index(categorie)
+                            if categorie in CATEGORY_ORDER
+                            else len(CATEGORY_ORDER)
+                        )
+                    )
+                ).sort_values("_ordre")
+                details = ", ".join(
+                    f"{row['Catégorie']}: {format_delta(row['Écart'])}"
+                    for _, row in df_departement.iterrows()
+                )
+                anomalies.append(f"- **{departement}** : ({details})")
+
+            date_section = f"### {date_value}"
+            if anomalies:
+                date_section += "\n" + "\n".join(anomalies)
+            sections_par_date.append(date_section)
+        sections_par_quart.append("\n\n".join(sections_par_date))
+
+    master_md = "\n\n".join([TOPO_24H_TITLE, *sections_par_quart])
+    master_md += (
+        "\n\n---\n"
+        "- Valider s'il y a débordement sur les unités.\n"
+        "- Valider s'il y a un service privé sur les étages.\n"
+        "- Valider s'il y a des équipes volantes à placer."
+    )
+    return master_md
+
+
+def _refresh_topo_24h(slot, uploaded_files, date_selection, quart_selection, enabled=True) -> None:
+    """Compute the Topo 24h as soon as inputs are ready and render its download button.
+
+    Independent from the 'Generate Personalized Workforce Report' action; the result is
+    cached in session state and recomputed only when files, period or quart change.
+    """
+    if quart_selection != ALL_QUARTS_LABEL or not enabled:
+        return
+
+    xlsx_files = [f for f in uploaded_files if Path(f.name).suffix.lower() == ".xlsx"]
+    ready = bool(xlsx_files) and len(date_selection) == 2
+    signature = (
+        tuple((f.name, f.size) for f in xlsx_files),
+        tuple(date_selection),
+    )
+
+    if not ready:
+        st.session_state["topo_24h_content"] = None
+        st.session_state["topo_24h_signature"] = None
+    elif st.session_state.get("topo_24h_signature") != signature:
+        st.session_state["topo_24h_signature"] = signature
+        st.session_state["topo_24h_content"] = None
+        try:
+            with slot, st.spinner("Génération du Topo 24h en cours..."):
+                df_semaine, df_fin_semaine = load_cibles_reference()
+                _, quart_frames = _collect_quart_reports(
+                    xlsx_files, date_selection[0], date_selection[1], df_semaine, df_fin_semaine
+                )
+                if quart_frames:
+                    st.session_state["topo_24h_content"] = _build_topo_24h_markdown(quart_frames)
+                    st.session_state["topo_24h_file_name"] = "Topo_24h_Global.md"
+        except Exception as exc:
+            with slot:
+                st.error(f"Topo 24h generation failed: {exc}")
+
+    topo_content = st.session_state.get("topo_24h_content")
+    with slot:
+        st.download_button(
+            "Download Topo 24h",
+            data=topo_content or "",
+            file_name=st.session_state.get("topo_24h_file_name", "Topo_24h_Global.md"),
+            mime="text/markdown",
+            key="download_topo_24h",
+            use_container_width=True,
+            disabled=not topo_content,
+        )
+
+
 def detect_document_format(uploaded_file) -> Tuple[str, str]:
     """Return a normalized document type and a user-facing label for the upload."""
     if uploaded_file is None:
@@ -426,6 +561,15 @@ def main() -> None:
             placeholder="e.g. What are the key takeaways?",
         )
 
+    topo_slot = st.container()
+    _refresh_topo_24h(
+        topo_slot,
+        uploaded_files,
+        date_selection,
+        quart_selection,
+        enabled=not cibles_load_error,
+    )
+
     if st.button("Generate Personalized Workforce Report", type="primary", use_container_width=True, disabled=uploaded_file is None):
         if len(date_selection) != 2:
             st.warning("Veuillez sélectionner une date de début ET une date de fin pour générer le rapport.")
@@ -441,31 +585,15 @@ def main() -> None:
                         df_semaine, df_fin_semaine = load_cibles_reference()
                         quart_frames = {}
                         if quart_selection == ALL_QUARTS_LABEL:
-                            quart_reports = []
-                            for file in uploaded_files:
-                                file_name_upper = file.name.upper()
-                                if "JOUR" in file_name_upper:
-                                    file_quart = "JOUR"
-                                elif "SOIR" in file_name_upper:
-                                    file_quart = "SOIR"
-                                elif "NUIT" in file_name_upper:
-                                    file_quart = "NUIT"
-                                else:
-                                    st.warning(f"Fichier ignoré (nomenclature non reconnue) : {file.name}")
-                                    continue
-                                file_report = build_workforce_file_report(
-                                    file,
-                                    file_quart,
-                                    start_date,
-                                    end_date,
-                                    df_semaine,
-                                    df_fin_semaine,
-                                )
-                                if not file_report.empty:
-                                    quart_reports.append(file_report)
-                                    quart_frames.setdefault(file_quart, []).append(file_report)
+                            quart_reports, quart_frames = _collect_quart_reports(
+                                uploaded_files,
+                                start_date,
+                                end_date,
+                                df_semaine,
+                                df_fin_semaine,
+                                warn=True,
+                            )
                             df_final = finalize_all_quarts_report(quart_reports)
-                            quart_frames = {q: pd.concat(frames, ignore_index=True) for q, frames in quart_frames.items()}
                         else:
                             df_final = build_workforce_period_report(
                                 uploaded_file,
@@ -495,8 +623,6 @@ def main() -> None:
                     st.session_state["xlsx_file_name"] = f"{original_name}_summary.xlsx"
                     st.session_state.pop("summary_error", None)
                     st.session_state["report_generated"] = True
-                    st.session_state["topo_24h_content"] = None
-                    st.session_state["quart_frames"] = quart_frames
                 except FileNotFoundError as exc:
                     st.session_state["summary_error"] = f"Dictionnaire de cibles introuvable: {exc}"
                 except (ValueError, KeyError) as exc:
@@ -523,8 +649,6 @@ def main() -> None:
                         f"{original_name}_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
                     )
                     st.session_state["report_generated"] = True
-                    st.session_state["topo_24h_content"] = None
-                    st.session_state["quart_frames"] = {}
                 except Exception as exc:  # pragma: no cover - UI-level fallback
                     st.session_state["summary_error"] = f"Processing failed: {exc}"
                 finally:
@@ -557,96 +681,6 @@ def main() -> None:
                 key="download_workforce_xlsx",
             )
 
-        if "topo_24h_content" not in st.session_state:
-            st.session_state["topo_24h_content"] = None
-
-        if st.session_state.get("report_generated"):
-            if st.session_state["topo_24h_content"] is None:
-                try:
-                    with st.spinner("Génération du Topo 24h en cours..."):
-                        quart_frames = st.session_state.get("quart_frames") or {}
-                        if quart_frames:
-                            sections_par_quart = []
-                            for quart in ("JOUR", "SOIR", "NUIT"):
-                                df_quart = quart_frames.get(quart)
-                                if df_quart is None:
-                                    continue
-                                df_quart = df_quart.copy()
-                                df_quart["_date"] = pd.to_datetime(df_quart["Date"])
-                                df_quart["_date_formatee"] = df_quart["_date"].dt.strftime(
-                                    "%d-%m-%Y"
-                                )
-                                df_quart = df_quart.sort_values("_date")
-                                sections_par_date = [f"# QUART DE {quart}"]
-                                for date_value, df_date in df_quart.groupby(
-                                    "_date_formatee", sort=False
-                                ):
-                                    ecarts = (
-                                        df_date.loc[
-                                            df_date["Écart"] != 0,
-                                            ["Département", "Catégorie", "Écart"],
-                                        ]
-                                        .groupby(
-                                            ["Département", "Catégorie"],
-                                            as_index=False,
-                                            sort=False,
-                                        )["Écart"]
-                                        .sum()
-                                    )
-                                    anomalies = []
-                                    for departement, df_departement in ecarts.groupby(
-                                        "Département", sort=False
-                                    ):
-                                        df_departement = df_departement.assign(
-                                            _ordre=df_departement["Catégorie"].map(
-                                                lambda categorie: (
-                                                    CATEGORY_ORDER.index(categorie)
-                                                    if categorie in CATEGORY_ORDER
-                                                    else len(CATEGORY_ORDER)
-                                                )
-                                            )
-                                        ).sort_values("_ordre")
-                                        total_ecart = int(df_departement["Écart"].sum())
-                                        details = ", ".join(
-                                            f"{row['Catégorie']}: {int(row['Écart'])}"
-                                            for _, row in df_departement.iterrows()
-                                        )
-                                        anomalies.append(
-                                            f"- **{departement}** : {total_ecart} "
-                                            f"(Détails : {details})"
-                                        )
-
-                                    date_section = f"### {date_value}"
-                                    if anomalies:
-                                        date_section += "\n" + "\n".join(anomalies)
-                                    sections_par_date.append(date_section)
-                                sections_par_quart.append("\n\n".join(sections_par_date))
-
-                            master_md = "\n\n".join([TOPO_24H_TITLE, *sections_par_quart])
-                            master_md += (
-                                "\n\n---\n"
-                                "- Valider s'il y a débordement sur les unités.\n"
-                                "- Valider s'il y a un service privé sur les étages.\n"
-                                "- Valider s'il y a des équipes volantes à placer."
-                            )
-                            st.session_state["topo_24h_content"] = master_md
-                            st.session_state["topo_24h_file_name"] = "Topo_24h_Global.md"
-                        else:
-                            st.session_state["topo_24h_content"] = generate_topo_24h(st.session_state["summary"])
-                            st.session_state["topo_24h_file_name"] = "Topo_RH_24h_Fleury.md"
-                except Exception as exc:
-                    st.session_state["topo_24h_content"] = None
-                    st.error(f"Topo 24h generation failed: {exc}")
-
-            if st.session_state.get("topo_24h_content"):
-                st.download_button(
-                    "Download Topo 24h",
-                    data=st.session_state["topo_24h_content"],
-                    file_name=st.session_state.get("topo_24h_file_name", "Topo_RH_24h_Fleury.md"),
-                    mime="text/markdown",
-                    key="download_topo_24h",
-                    use_container_width=True,
-                )
 
 
 if __name__ == "__main__":
