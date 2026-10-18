@@ -6,13 +6,10 @@ import datetime
 import json
 import os
 import re
-from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
 
 import pandas as pd
-from openpyxl.formatting.rule import CellIsRule
-from openpyxl.styles import Font, PatternFill
 
 from .summarizer import GoogleGeminiSummarizer
 
@@ -593,34 +590,6 @@ def parse_workforce_xlsx(uploaded_file) -> Tuple[pd.DataFrame, pd.DataFrame, dic
     return df_besoins, df_surplus, summary
 
 
-def generate_summary_excel(df_besoins: pd.DataFrame, df_surplus: pd.DataFrame) -> BytesIO:
-    """Create a formatted in-memory workbook containing needs and surplus."""
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        df_besoins.to_excel(writer, sheet_name="Sommaire Besoins", index=False)
-        df_surplus.to_excel(writer, sheet_name="Sommaire Surplus", index=False)
-        for sheet_name, color in (("Sommaire Besoins", "FFC7CE"), ("Sommaire Surplus", "C6EFCE")):
-            worksheet = writer.book[sheet_name]
-            worksheet.freeze_panes = "A2"
-            worksheet.auto_filter.ref = worksheet.dimensions
-            for cell in worksheet[1]:
-                cell.font = Font(bold=True, color="FFFFFF")
-                cell.fill = PatternFill("solid", fgColor="1F4E78")
-            last_row = worksheet.max_row
-            if last_row > 1:
-                value_column = "I" if sheet_name == "Sommaire Besoins" else "J"
-                worksheet.conditional_formatting.add(
-                    f"{value_column}2:{value_column}{last_row}",
-                    CellIsRule(operator="greaterThan", formula=["0"], fill=PatternFill("solid", fgColor=color)),
-                )
-            for column in worksheet.columns:
-                letter = column[0].column_letter
-                width = min(max(len(str(cell.value or "")) for cell in column) + 2, 32)
-                worksheet.column_dimensions[letter].width = width
-    output.seek(0)
-    return output
-
-
 TOPO_24H_TITLE = "Hôpital Fleury - état des RH 24 h"
 
 TOPO_24H_TEMPLATE = TOPO_24H_TITLE + """
@@ -710,7 +679,7 @@ def generate_topo_24h(data_summary: str, api_key: Optional[str] = None, quart: O
         raise RuntimeError(f"Génération du Topo 24h impossible: {exc}") from exc
 
 
-def query_gemini_analysis(data_summary: dict, user_prompt: str = "", api_key: Optional[str] = None) -> str:
+def query_gemini_analysis(data_summary: dict, api_key: Optional[str] = None) -> str:
     """Ask Gemini for an executive workforce report based only on aggregated data."""
     if not isinstance(data_summary, dict) or not data_summary.get("lignes_analysees"):
         raise ValueError("Le contexte d'analyse est vide ou invalide.")
@@ -720,14 +689,13 @@ def query_gemini_analysis(data_summary: dict, user_prompt: str = "", api_key: Op
         "et recommande des compensations entre unités en surplus et en besoin. Cite les chiffres fournis "
         "et ne fabrique aucune donnée."
     )
-    instruction = user_prompt.strip() if isinstance(user_prompt, str) and user_prompt.strip() else default_instruction
     context = json.dumps(data_summary, ensure_ascii=False, default=str, indent=2)
     try:
         summarizer = GoogleGeminiSummarizer(api_key=api_key or os.getenv("GOOGLE_API_KEY"))
         return summarizer.summarize(
             f"Données agrégées de gestion des activités de remplacement:\n{context}",
             max_output_tokens=1200,
-            system_instruction=instruction,
+            system_instruction=default_instruction,
         )
     except Exception as exc:
         raise RuntimeError(f"Analyse Gemini impossible: {exc}") from exc

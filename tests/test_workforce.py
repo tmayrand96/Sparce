@@ -2,11 +2,9 @@ import datetime
 from io import BytesIO
 
 import pandas as pd
-from openpyxl import load_workbook
 
 from backend.core.workforce import (
     build_workforce_period_report,
-    generate_summary_excel,
     load_cibles_reference,
     parse_workforce_xlsx,
     select_cibles_for_period,
@@ -186,14 +184,3 @@ def test_build_workforce_period_report_normalizes_categories_and_selects_weekend
     ] * 2
     assert df_final["Catégorie"].astype(str).tolist() == ["AA", "Inf", "AA", "Inf"]
     assert df_final["Cible"].tolist() == [1, 2, 4, 5]
-
-
-def test_generate_summary_excel_has_expected_sheets_and_formatting():
-    needs, surplus, _ = parse_workforce_xlsx(_workbook_bytes())
-
-    workbook = load_workbook(generate_summary_excel(needs, surplus))
-
-    assert workbook.sheetnames == ["Sommaire Besoins", "Sommaire Surplus"]
-    assert workbook["Sommaire Besoins"]["A1"].value == "Jour"
-    assert len(workbook["Sommaire Besoins"].conditional_formatting) == 1
-    assert len(workbook["Sommaire Surplus"].conditional_formatting) == 1

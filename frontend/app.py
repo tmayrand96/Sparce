@@ -1,7 +1,6 @@
 
 import base64
 import sys
-from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 
@@ -14,8 +13,6 @@ from backend.core.workforce import (
     build_workforce_file_report,
     finalize_all_quarts_report,
     build_workforce_period_report,
-    generate_summary_excel,
-    generate_topo_24h,
     CATEGORY_ORDER,
     TOPO_24H_TITLE,
     get_available_quarts,
@@ -124,7 +121,7 @@ def _build_topo_24h_markdown(quart_frames) -> str:
 def _refresh_topo_24h(slot, uploaded_files, date_selection, quart_selection, enabled=True) -> None:
     """Compute the Topo 24h as soon as inputs are ready and render its download button.
 
-    Independent from the 'Generate Personalized Workforce Report' action; the result is
+    Independent from the 'Connect to API' action; the result is
     cached in session state and recomputed only when files, period or quart change.
     """
     if quart_selection != ALL_QUARTS_LABEL or not enabled:
@@ -553,14 +550,6 @@ def main() -> None:
                 unsafe_allow_html=True,
             )
 
-    use_custom_prompt = st.checkbox("Enable Prompt", value=False)
-    custom_question = ""
-    if use_custom_prompt:
-        custom_question = st.text_area(
-            "Ask a specific question about the workforce data",
-            placeholder="e.g. What are the key takeaways?",
-        )
-
     topo_slot = st.container()
     _refresh_topo_24h(
         topo_slot,
@@ -570,7 +559,7 @@ def main() -> None:
         enabled=not cibles_load_error,
     )
 
-    if st.button("Generate Personalized Workforce Report", type="primary", use_container_width=True, disabled=uploaded_file is None):
+    if st.button("Connect to API", type="primary", use_container_width=True, disabled=uploaded_file is None):
         if len(date_selection) != 2:
             st.warning("Veuillez sélectionner une date de début ET une date de fin pour générer le rapport.")
             st.stop()
@@ -606,7 +595,6 @@ def main() -> None:
 
                         df_besoins = df_final[df_final["Besoins"] > 0].reset_index(drop=True)
                         df_surplus = df_final[df_final["Surplus"] > 0].reset_index(drop=True)
-                        excel_output = generate_summary_excel(df_besoins, df_surplus)
                         data_summary = {
                             "date_debut": str(start_date),
                             "date_fin": str(end_date),
@@ -615,14 +603,9 @@ def main() -> None:
                             "besoins": df_besoins.to_dict(orient="records"),
                             "surplus": df_surplus.to_dict(orient="records"),
                         }
-                        summary = query_gemini_analysis(data_summary, custom_question)
+                        summary = query_gemini_analysis(data_summary)
                     st.session_state["summary"] = summary
-                    st.session_state["workforce_xlsx"] = excel_output.getvalue()
-                    original_name = Path(getattr(uploaded_file, "name", "sparce_workforce")).stem
-                    st.session_state["summary_file_name"] = f"{original_name}_report.md"
-                    st.session_state["xlsx_file_name"] = f"{original_name}_summary.xlsx"
                     st.session_state.pop("summary_error", None)
-                    st.session_state["report_generated"] = True
                 except FileNotFoundError as exc:
                     st.session_state["summary_error"] = f"Dictionnaire de cibles introuvable: {exc}"
                 except (ValueError, KeyError) as exc:
@@ -637,18 +620,9 @@ def main() -> None:
 
                 try:
                     with st.spinner("Processing document..."):
-                        summary = run_pipeline(
-                            temp_path,
-                            user_prompt=custom_question if use_custom_prompt else None,
-                            max_output_tokens=300,
-                        )
+                        summary = run_pipeline(temp_path, max_output_tokens=300)
                     st.session_state["summary"] = summary
                     st.session_state.pop("summary_error", None)
-                    original_name = Path(getattr(uploaded_file, "name", "sparce_summary")).stem
-                    st.session_state["summary_file_name"] = (
-                        f"{original_name}_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
-                    )
-                    st.session_state["report_generated"] = True
                 except Exception as exc:  # pragma: no cover - UI-level fallback
                     st.session_state["summary_error"] = f"Processing failed: {exc}"
                 finally:
@@ -664,22 +638,6 @@ def main() -> None:
             f"<div class='summary-card'>{st.session_state['summary'].replace(chr(10), '<br>')}</div>",
             unsafe_allow_html=True,
         )
-
-        st.download_button(
-            "Download MD File",
-            data=st.session_state["summary"],
-            file_name=st.session_state.get("summary_file_name", "sparce_summary.md"),
-            mime="text/markdown",
-            key="download_summary",
-        )
-        if st.session_state.get("workforce_xlsx"):
-            st.download_button(
-                "Download Summary XLSX",
-                data=st.session_state["workforce_xlsx"],
-                file_name=st.session_state.get("xlsx_file_name", "workforce_summary.xlsx"),
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="download_workforce_xlsx",
-            )
 
 
 
