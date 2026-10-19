@@ -387,6 +387,20 @@ def _render_date_range_dialog() -> None:
     date_range_dialog()
 
 
+_JOURS_FR = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+_MOIS_FR = [
+    "janvier", "février", "mars", "avril", "mai", "juin",
+    "juillet", "août", "septembre", "octobre", "novembre", "décembre",
+]
+
+
+def format_date_fr(value) -> str:
+    """Formate une date en français (ex. « jeudi le 15 octobre 2026 ») sans dépendre de la locale système."""
+    d = pd.to_datetime(value).date()
+    jour = "1er" if d.day == 1 else str(d.day)
+    return f"{_JOURS_FR[d.weekday()]} le {jour} {_MOIS_FR[d.month - 1]} {d.year}"
+
+
 def _render_etape1_dialog(uploaded_files, date_selection) -> None:
     @st.dialog("Validation Visuelle des Cibles et Écarts", width="large")
     def etape1_dialog() -> None:
@@ -435,7 +449,14 @@ def _render_etape1_dialog(uploaded_files, date_selection) -> None:
 
             st.dataframe(df_regle.style.apply(highlight_active, axis=None), hide_index=True)
         with col2:
-            st.markdown("**Le constat opérationnel : Présences − Cible = Écart**")
+            try:
+                date_ref = format_date_fr(sample["Date"].iloc[0])
+            except (ValueError, TypeError, IndexError, KeyError):
+                date_ref = format_date_fr(start_date)
+            st.markdown(
+                "**Le constat opérationnel : Présences − Cible = Écart** "
+                f"*« Les valeurs du tableau ci-bas font partie de la journée du {date_ref} »*"
+            )
             df_exc = pd.DataFrame(
                 {
                     "Unité": sample["Département"],
