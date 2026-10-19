@@ -392,46 +392,58 @@ def _render_etape1_dialog(uploaded_files, date_selection) -> None:
     def etape1_dialog() -> None:
         df_semaine, df_fin_semaine = load_cibles_reference()
         start_date, end_date = date_selection
-        quart_reports, _ = _collect_quart_reports(
+        _, quart_frames = _collect_quart_reports(
             uploaded_files, start_date, end_date, df_semaine, df_fin_semaine
         )
-        if not quart_reports:
+        if not quart_frames:
             st.warning("Aucun écart exploitable dans les fichiers importés.")
             return
-        df_all = pd.concat(quart_reports, ignore_index=True)
-        sample = df_all[df_all["Écart"] != 0].head(5)
-        if sample.empty:
-            sample = df_all.head(5)
-        sample = sample.reset_index(drop=True)
+        df_all = pd.concat(
+            [frame.assign(Quart=quart) for quart, frame in quart_frames.items()], ignore_index=True
+        )
+        df_all["_semaine"] = pd.to_datetime(df_all["Date"]).dt.weekday < 5
+        df_all["Catégorie"] = df_all["Catégorie"].astype(str)
+
+        # L'échantillon est homogène (même quart, même type de jour) pour rester comparable à la règle affichée.
+        df_ecarts = df_all[df_all["Écart"] != 0]
+        df_base = df_ecarts if not df_ecarts.empty else df_all
+        first = df_base.iloc[0]
+        is_weekday = bool(first["_semaine"])
+        active_col = str(first["Quart"]).strip().upper()
+        sample = df_base[(df_base["Quart"] == first["Quart"]) & (df_base["_semaine"] == is_weekday)]
+        sample = sample.head(5).reset_index(drop=True)
         unites = list(dict.fromkeys(sample["Département"]))
 
-        # La lentille active est déterminée par le premier écart (jour de semaine ou fin de semaine, quart).
-        first = sample.iloc[0]
-        is_weekday = pd.to_datetime(first["Date"]).weekday() < 5
         df_cibles = df_semaine if is_weekday else df_fin_semaine
-        active_col = str(first["Quart"]).strip().upper()
         table_label = "Semaine" if is_weekday else "Fin de semaine"
 
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown(f"**La règle : Cibles.xlsx ({table_label})**")
-            df_regle = df_cibles[df_cibles["Département"].isin(unites)].reset_index(drop=True)
+            st.markdown(f"**La règle : Cibles.xlsx ({table_label}, quart {active_col})**")
+            cols_regle = [c for c in ("Département", "Catégorie", active_col) if c in df_cibles.columns]
+            df_regle = (
+                df_cibles[df_cibles["Département"].isin(unites)][cols_regle]
+                .rename(columns={"Département": "Unité"})
+                .reset_index(drop=True)
+            )
 
             def highlight_active(data: pd.DataFrame) -> pd.DataFrame:
                 styles = pd.DataFrame("", index=data.index, columns=data.columns)
                 if active_col in styles.columns:
-                    styles[active_col] = "background-color: #FFFF00; color: black;"
+                    styles[active_col] = "background-color: #FFFF00; color: #000000; font-weight: bold;"
                 return styles
 
             st.dataframe(df_regle.style.apply(highlight_active, axis=None), hide_index=True)
         with col2:
-            st.markdown("**L'exception : écarts détectés**")
+            st.markdown("**Le constat opérationnel : Présences − Cible = Écart**")
             df_exc = pd.DataFrame(
                 {
                     "Unité": sample["Département"],
-                    "Catégorie": sample["Catégorie"].astype(str),
-                    "Présents": sample["Présences"],
-                    "Écart": sample["Écart"].map(format_delta),
+                    "Quart": sample["Quart"],
+                    "Catégorie": sample["Catégorie"],
+                    "Présences": sample["Présences"],
+                    "Cible": sample["Cible"],
+                    "Écart Calculé": (sample["Présences"] - sample["Cible"]).map(format_delta),
                 }
             )
             st.dataframe(df_exc, hide_index=True)
@@ -449,17 +461,10 @@ def _render_etape1_stepper(uploaded_files, date_selection) -> None:
     if "etape1_validated" not in st.session_state:
         st.session_state.etape1_validated = False
 
-    text_col, check_col = st.columns([12, 1])
-    with text_col:
-        st.markdown(
-            "<span style='color: #0073A9; font-weight: bold;'>Activation des étapes de vérification "
-            "(J'ai téléchargé les fichiers Excel J/S/N)</span>",
-            unsafe_allow_html=True,
-        )
-    with check_col:
-        st.session_state.etape1_unlocked = st.checkbox(
-            "Activer les étapes", value=st.session_state.etape1_unlocked, label_visibility="collapsed"
-        )
+    st.checkbox(
+        "Activation des étapes de vérification (J'ai téléchargé les fichiers Excel J/S/N)",
+        key="etape1_unlocked",
+    )
 
     validated = st.session_state.etape1_validated
     label = "✅ Étape 1 : Validée" if validated else "Étape 1: Activation des éléments de validation par l'AA"
