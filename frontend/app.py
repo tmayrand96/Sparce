@@ -387,6 +387,96 @@ def _render_date_range_dialog() -> None:
     date_range_dialog()
 
 
+def _render_etape1_dialog(uploaded_files, date_selection) -> None:
+    @st.dialog("Validation Visuelle des Cibles et Écarts", width="large")
+    def etape1_dialog() -> None:
+        df_semaine, df_fin_semaine = load_cibles_reference()
+        start_date, end_date = date_selection
+        quart_reports, _ = _collect_quart_reports(
+            uploaded_files, start_date, end_date, df_semaine, df_fin_semaine
+        )
+        if not quart_reports:
+            st.warning("Aucun écart exploitable dans les fichiers importés.")
+            return
+        df_all = pd.concat(quart_reports, ignore_index=True)
+        sample = df_all[df_all["Écart"] != 0].head(5)
+        if sample.empty:
+            sample = df_all.head(5)
+        sample = sample.reset_index(drop=True)
+        unites = list(dict.fromkeys(sample["Département"]))
+
+        # La lentille active est déterminée par le premier écart (jour de semaine ou fin de semaine, quart).
+        first = sample.iloc[0]
+        is_weekday = pd.to_datetime(first["Date"]).weekday() < 5
+        df_cibles = df_semaine if is_weekday else df_fin_semaine
+        active_col = str(first["Quart"]).strip().upper()
+        table_label = "Semaine" if is_weekday else "Fin de semaine"
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(f"**La règle : Cibles.xlsx ({table_label})**")
+            df_regle = df_cibles[df_cibles["Département"].isin(unites)].reset_index(drop=True)
+
+            def highlight_active(data: pd.DataFrame) -> pd.DataFrame:
+                styles = pd.DataFrame("", index=data.index, columns=data.columns)
+                if active_col in styles.columns:
+                    styles[active_col] = "background-color: #FFFF00; color: black;"
+                return styles
+
+            st.dataframe(df_regle.style.apply(highlight_active, axis=None), hide_index=True)
+        with col2:
+            st.markdown("**L'exception : écarts détectés**")
+            df_exc = pd.DataFrame(
+                {
+                    "Unité": sample["Département"],
+                    "Catégorie": sample["Catégorie"].astype(str),
+                    "Présents": sample["Présences"],
+                    "Écart": sample["Écart"].map(format_delta),
+                }
+            )
+            st.dataframe(df_exc, hide_index=True)
+
+        if st.button("J'ai confirmé que les éléments sont vrais", key="etape1_approve"):
+            st.session_state.etape1_validated = True
+            st.rerun()
+
+    etape1_dialog()
+
+
+def _render_etape1_stepper(uploaded_files, date_selection) -> None:
+    if "etape1_unlocked" not in st.session_state:
+        st.session_state.etape1_unlocked = False
+    if "etape1_validated" not in st.session_state:
+        st.session_state.etape1_validated = False
+
+    text_col, check_col = st.columns([12, 1])
+    with text_col:
+        st.markdown(
+            "<span style='color: #0073A9; font-weight: bold;'>Activation des étapes de vérification "
+            "(J'ai téléchargé les fichiers Excel J/S/N)</span>",
+            unsafe_allow_html=True,
+        )
+    with check_col:
+        st.session_state.etape1_unlocked = st.checkbox(
+            "Activer les étapes", value=st.session_state.etape1_unlocked, label_visibility="collapsed"
+        )
+
+    validated = st.session_state.etape1_validated
+    label = "✅ Étape 1 : Validée" if validated else "Étape 1: Activation des éléments de validation par l'AA"
+    clicked = st.button(
+        label,
+        key="etape1_button",
+        type="primary" if validated else "secondary",
+        disabled=not st.session_state.etape1_unlocked,
+        use_container_width=True,
+    )
+    if clicked:
+        if len(date_selection) != 2 or not any(Path(f.name).suffix.lower() == ".xlsx" for f in uploaded_files):
+            st.warning("Importez les fichiers Excel et choisissez une période avant l'Étape 1.")
+        else:
+            _render_etape1_dialog(uploaded_files, date_selection)
+
+
 def main() -> None:
     if st is None:
         raise RuntimeError("streamlit must be installed to run the UI")
@@ -558,6 +648,9 @@ def main() -> None:
         quart_selection,
         enabled=not cibles_load_error,
     )
+
+    if quart_selection == ALL_QUARTS_LABEL and not cibles_load_error:
+        _render_etape1_stepper(uploaded_files, date_selection)
 
     if st.button("Connect to API", type="primary", use_container_width=True, disabled=uploaded_file is None):
         if len(date_selection) != 2:
