@@ -16,7 +16,6 @@
 Le diagramme ci-dessous illustre le cycle complet de traitement, de la saisie terrain jusqu'à la génération conditionnelle des rapports décisionnels :
 
 ```mermaid
-```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'background': '#f4f9fd', 'primaryColor': '#ffffff', 'primaryBorderColor': '#0073A9', 'primaryTextColor': '#0f2942', 'lineColor': '#005b87', 'clusterBkg': '#eaf4fc', 'clusterBorder': '#7ab8db', 'fontFamily': 'Segoe UI, Helvetica, Arial, sans-serif', 'fontSize': '13px'}, 'flowchart': {'curve': 'basis', 'padding': 16, 'nodeSpacing': 35, 'rankSpacing': 50, 'htmlLabels': true}}}%%
 flowchart LR
     classDef step fill:#ffffff,stroke:#0073A9,stroke-width:1.5px,color:#0f2942;
