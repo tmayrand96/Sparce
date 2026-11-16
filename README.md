@@ -17,47 +17,69 @@ Le diagramme ci-dessous illustre le cycle complet de traitement, de la saisie te
 
 ```mermaid
 flowchart TD
-    %% Styles exécutifs (#0073A9 charte Sparce AI)
-    classDef phase fill:#0073A9,stroke:#004d73,stroke-width:2px,color:#ffffff,font-weight:bold;
-    classDef step fill:#f4f9fc,stroke:#0073A9,stroke-width:1.5px,color:#1a1a1a;
-    classDef engine fill:#eef6fa,stroke:#005b87,stroke-width:2px,stroke-dasharray: 5 5,color:#004d73,font-weight:bold;
-    classDef condition fill:#fff8e6,stroke:#d9822b,stroke-width:2px,color:#5c3709,font-weight:bold;
-    classDef governance fill:#f3e8fd,stroke:#7b1fa2,stroke-width:2px,color:#4a148c,font-weight:bold;
-    classDef output fill:#e6f4ea,stroke:#1e8e3e,stroke-width:2px,color:#0d652d,font-weight:bold;
+ %%{init: {
+  'theme': 'base',
+  'themeVariables': {
+    'background': '#f4f9fd',
+    'primaryColor': '#ffffff',
+    'primaryBorderColor': '#0073A9',
+    'primaryTextColor': '#0f2942',
+    'lineColor': '#005b87',
+    'clusterBkg': '#eaf4fc',
+    'clusterBorder': '#7ab8db',
+    'fontFamily': 'Segoe UI, Helvetica, Arial, sans-serif',
+    'fontSize': '13px'
+  },
+  'flowchart': {
+    'curve': 'basis',
+    'padding': 16,
+    'nodeSpacing': 35,
+    'rankSpacing': 50,
+    'htmlLabels': true
+  }
+}}%%
+flowchart LR
+    %% Classes de style harmonisées (Palette Bleu Sparce AI)
+    classDef step fill:#ffffff,stroke:#0073A9,stroke-width:1.5px,color:#0f2942;
+    classDef engine fill:#d8eefb,stroke:#005b87,stroke-width:2px,stroke-dasharray: 5 5,color:#003b5c,font-weight:bold;
+    classDef condition fill:#cbe6f9,stroke:#026aa7,stroke-width:2px,color:#00334e,font-weight:bold;
+    classDef governance fill:#e3effd,stroke:#1e56a0,stroke-width:2px,color:#163172,font-weight:bold;
+    classDef output fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,color:#01579b,font-weight:bold;
     classDef api fill:#e0f2f1,stroke:#00796b,stroke-width:2px,stroke-dasharray: 5 5,color:#004d40,font-weight:bold;
 
-    subgraph P1 ["Étape 1 : Extraction et normalisation des présences (SIRH / Gabarit GAR)"]
-        A["Extraction des présences effectives<br/>(Virtuo Lourd / Feuilles quotidiennes)"]:::step
-        B["Saisie opérationnelle par quart<br/>(JOUR, SOIR, NUIT)"]:::step
-        C["Enregistrement normalisé des classeurs :<br/>• JOUR-06-09.xlsx<br/>• SOIR-05-08.xlsx<br/>• NUIT-06-09.xlsx"]:::step
+    subgraph P1 ["1. Saisie & Extraction (SIRH)"]
+        direction TB
+        A["Extraction Virtuo Lourd<br/>(Feuilles quotidiennes)"]:::step
+        B["Saisie des présences<br/>(JOUR / SOIR / NUIT)"]:::step
+        C["Classeurs normalisés :<br/>• JOUR-XX-XX.xlsx<br/>• SOIR-XX-XX.xlsx<br/>• NUIT-XX-XX.xlsx"]:::step
         A --> B --> C
     end
 
-    subgraph P2 ["Étape 2 : Ingestion et moteur déterministe (Mémoire volatile / Zéro persistance)"]
-        D["Ouverture de l'interface web<br/>Sparce AI — Module GAR"]:::step
-        E["Importation multi-fichiers .xlsx<br/>(Detected Format : Excel Workforce Workbook)"]:::step
-        F["Sélection de la période via calendrier interactif<br/>(ex. : 05/11/2026 – 09/11/2026 → Ok ✅)"]:::step
-        G["Paramétrage du « Sélecteur de quart »<br/>(JOUR / SOIR / NUIT / Tous les quarts)"]:::step
-        H[["⚙️ Moteur de conciliation déterministe (RAM uniquement) :<br/>Présences réelles vs Cibles de ratios départementaux"]]:::engine
-        
-        D --> E --> F --> G --> H
-        F -.->|Filtrage temporel réactif| H
+    subgraph P2 ["2. Ingestion & Moteur Déterministe (RAM)"]
+        direction TB
+        D["Importation multi-fichiers<br/>(Excel Workforce Workbook)"]:::step
+        E["Sélection de la période<br/>(Calendrier interactif)"]:::step
+        F["Sélecteur de quart<br/>(J / S / N / Tous)"]:::step
+        G[["⚙️ Conciliation déterministe<br/>Présences vs Ratios (RAM)<br/>Zéro persistance"]]:::engine
+        D --> E --> F --> G
     end
 
-    subgraph P3 ["Étape 3 : Audit visuel (Human-in-the-Loop), Exportation et Extension API"]
-        I["🛡️ Contrôle de conformité obligatoire (Human-in-the-Loop) :<br/>Validation visuelle des écarts nets par l'agent administratif"]:::governance
-        J{"Portée choisie dans le<br/>« Sélecteur de quart » ?"}:::condition
-        K["Affichage ciblé des écarts<br/>pour le quart unique (JOUR, SOIR ou NUIT)"]:::output
-        L["Déverrouillage et exportation directe :<br/>📥 Download Topo 24h (Synthèse Markdown multi-quarts)"]:::output
-        M[["🔌 Connect to API (Extension optionnelle / Clé API institutionnelle ex. Azure OpenAI) :<br/>Génération de rapports détaillés de gestion & extraction de statistiques / KPIs<br/>pour les gestionnaires et coordonnateurs"]]:::api
+    subgraph P3 ["3. Gouvernance, Livrables & Extension API"]
+        direction TB
+        H["🛡️ Audit Human-in-the-Loop<br/>Validation par l'agent"]:::governance
+        I{"Portée du<br/>quart ?"}:::condition
+        J["Affichage des écarts<br/>Quart unique (J/S/N)"]:::output
+        K["📥 Download Topo 24h<br/>Synthèse multi-quarts (.md)"]:::output
+        L[["🔌 Connect to API (Optionnel)<br/>Clé API institutionnelle<br/>(ex. Azure OpenAI)<br/>Rapports & KPIs de gestion"]]:::api
 
-        H --> I --> J
-        J -- "Quart unique (Jour / Soir / Nuit)" --> K
-        J -- "« Tous les quarts » sélectionné" --> L
-        I -. "Connecteur gouverné (Prêt pour tenant DRTI)" .-> M
+        H --> I
+        I -- "Quart unique" --> J
+        I -- "Tous les quarts" --> K
+        H -. "Connecteur gouverné" .-> L
     end
 
     C ==> D
+    G ==> H
 ```
 
 ---
