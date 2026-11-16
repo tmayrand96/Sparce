@@ -16,30 +16,9 @@
 Le diagramme ci-dessous illustre le cycle complet de traitement, de la saisie terrain jusqu'à la génération conditionnelle des rapports décisionnels :
 
 ```mermaid
-flowchart TD
- %%{init: {
-  'theme': 'base',
-  'themeVariables': {
-    'background': '#f4f9fd',
-    'primaryColor': '#ffffff',
-    'primaryBorderColor': '#0073A9',
-    'primaryTextColor': '#0f2942',
-    'lineColor': '#005b87',
-    'clusterBkg': '#eaf4fc',
-    'clusterBorder': '#7ab8db',
-    'fontFamily': 'Segoe UI, Helvetica, Arial, sans-serif',
-    'fontSize': '13px'
-  },
-  'flowchart': {
-    'curve': 'basis',
-    'padding': 16,
-    'nodeSpacing': 35,
-    'rankSpacing': 50,
-    'htmlLabels': true
-  }
-}}%%
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'background': '#f4f9fd', 'primaryColor': '#ffffff', 'primaryBorderColor': '#0073A9', 'primaryTextColor': '#0f2942', 'lineColor': '#005b87', 'clusterBkg': '#eaf4fc', 'clusterBorder': '#7ab8db', 'fontFamily': 'Segoe UI, Helvetica, Arial, sans-serif', 'fontSize': '13px'}, 'flowchart': {'curve': 'basis', 'padding': 16, 'nodeSpacing': 35, 'rankSpacing': 50, 'htmlLabels': true}}}%%
 flowchart LR
-    %% Classes de style harmonisées (Palette Bleu Sparce AI)
     classDef step fill:#ffffff,stroke:#0073A9,stroke-width:1.5px,color:#0f2942;
     classDef engine fill:#d8eefb,stroke:#005b87,stroke-width:2px,stroke-dasharray: 5 5,color:#003b5c,font-weight:bold;
     classDef condition fill:#cbe6f9,stroke:#026aa7,stroke-width:2px,color:#00334e,font-weight:bold;
@@ -47,7 +26,7 @@ flowchart LR
     classDef output fill:#e1f5fe,stroke:#0288d1,stroke-width:2px,color:#01579b,font-weight:bold;
     classDef api fill:#e0f2f1,stroke:#00796b,stroke-width:2px,stroke-dasharray: 5 5,color:#004d40,font-weight:bold;
 
-    subgraph P1 ["1. Saisie & Extraction (SIRH)"]
+    subgraph P1 ["1. Saisie et Extraction (SIRH)"]
         direction TB
         A["Extraction Virtuo Lourd<br/>(Feuilles quotidiennes)"]:::step
         B["Saisie des présences<br/>(JOUR / SOIR / NUIT)"]:::step
@@ -55,7 +34,7 @@ flowchart LR
         A --> B --> C
     end
 
-    subgraph P2 ["2. Ingestion & Moteur Déterministe (RAM)"]
+    subgraph P2 ["2. Ingestion et Moteur Déterministe (RAM)"]
         direction TB
         D["Importation multi-fichiers<br/>(Excel Workforce Workbook)"]:::step
         E["Sélection de la période<br/>(Calendrier interactif)"]:::step
@@ -64,13 +43,13 @@ flowchart LR
         D --> E --> F --> G
     end
 
-    subgraph P3 ["3. Gouvernance, Livrables & Extension API"]
+    subgraph P3 ["3. Gouvernance, Livrables et Extension API"]
         direction TB
         H["🛡️ Audit Human-in-the-Loop<br/>Validation par l'agent"]:::governance
         I{"Portée du<br/>quart ?"}:::condition
         J["Affichage des écarts<br/>Quart unique (J/S/N)"]:::output
         K["📥 Download Topo 24h<br/>Synthèse multi-quarts (.md)"]:::output
-        L[["🔌 Connect to API (Optionnel)<br/>Clé API institutionnelle<br/>(ex. Azure OpenAI)<br/>Rapports & KPIs de gestion"]]:::api
+        L[["🔌 Connect to API (Optionnel)<br/>Clé API institutionnelle<br/>(ex. Azure OpenAI)<br/>Rapports et KPIs de gestion"]]:::api
 
         H --> I
         I -- "Quart unique" --> J
@@ -81,7 +60,6 @@ flowchart LR
     C ==> D
     G ==> H
 ```
-
 ---
 
 ## 📋 Procédure Opérationnelle Étape par Étape
