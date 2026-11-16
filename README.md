@@ -16,7 +16,7 @@
 Le diagramme ci-dessous illustre le cycle complet de traitement, de la saisie terrain jusqu'à la génération conditionnelle des rapports décisionnels :
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'background': '#f4f9fd', 'primaryColor': '#ffffff', 'primaryBorderColor': '#0073A9', 'primaryTextColor': '#0f2942', 'lineColor': '#005b87', 'clusterBkg': '#eaf4fc', 'clusterBorder': '#7ab8db', 'fontFamily': 'Segoe UI, Helvetica, Arial, sans-serif', 'fontSize': '13px'}, 'flowchart': {'curve': 'basis', 'padding': 16, 'nodeSpacing': 35, 'rankSpacing': 50, 'htmlLabels': true}}}%%
+%%{init: {'theme': 'base', 'themeVariables': {'background': '#f4f9fd', 'primaryColor': '#ffffff', 'primaryBorderColor': '#0073A9', 'primaryTextColor': '#0f2942', 'lineColor': '#005b87', 'clusterBkg': '#eaf4fc', 'clusterBorder': '#7ab8db', 'fontFamily': 'Arial, sans-serif', 'fontSize': '12px'}, 'flowchart': {'curve': 'basis', 'padding': 20, 'nodeSpacing': 30, 'rankSpacing': 45, 'htmlLabels': true}}}%%
 flowchart LR
     classDef step fill:#ffffff,stroke:#0073A9,stroke-width:1.5px,color:#0f2942;
     classDef engine fill:#d8eefb,stroke:#005b87,stroke-width:2px,stroke-dasharray: 5 5,color:#003b5c,font-weight:bold;
@@ -29,31 +29,31 @@ flowchart LR
         direction TB
         A["Extraction Virtuo Lourd<br/>(Feuilles quotidiennes)"]:::step
         B["Saisie des présences<br/>(JOUR / SOIR / NUIT)"]:::step
-        C["Classeurs normalisés :<br/>• JOUR-XX-XX.xlsx<br/>• SOIR-XX-XX.xlsx<br/>• NUIT-XX-XX.xlsx"]:::step
+        C["Classeurs normalisés :<br/>JOUR-XX-XX.xlsx<br/>SOIR-XX-XX.xlsx<br/>NUIT-XX-XX.xlsx"]:::step
         A --> B --> C
     end
 
-    subgraph P2 ["2. Ingestion et Moteur Déterministe (RAM)"]
+    subgraph P2 ["2. Ingestion et Moteur (RAM)"]
         direction TB
-        D["Importation multi-fichiers<br/>(Excel Workforce Workbook)"]:::step
+        D["Importation multi-fichiers<br/>(Workforce Workbook)"]:::step
         E["Sélection de la période<br/>(Calendrier interactif)"]:::step
         F["Sélecteur de quart<br/>(J / S / N / Tous)"]:::step
-        G[["⚙️ Conciliation déterministe<br/>Présences vs Ratios (RAM)<br/>Zéro persistance"]]:::engine
+        G["Moteur déterministe (RAM)<br/>Présences vs Ratios<br/>Zéro persistance"]:::engine
         D --> E --> F --> G
     end
 
-    subgraph P3 ["3. Gouvernance, Livrables et Extension API"]
+    subgraph P3 ["3. Gouvernance et Livrables"]
         direction TB
-        H["🛡️ Audit Human-in-the-Loop<br/>Validation par l'agent"]:::governance
+        H["Audit Human-in-the-Loop<br/>Validation par l'agent"]:::governance
         I{"Portée du<br/>quart ?"}:::condition
         J["Affichage des écarts<br/>Quart unique (J/S/N)"]:::output
-        K["📥 Download Topo 24h<br/>Synthèse multi-quarts (.md)"]:::output
-        L[["🔌 Connect to API (Optionnel)<br/>Clé API institutionnelle<br/>(ex. Azure OpenAI)<br/>Rapports et KPIs de gestion"]]:::api
+        K["Download Topo 24h<br/>Synthèse globale (.md)"]:::output
+        L["Connect to API (Optionnel)<br/>Clé Azure OpenAI<br/>Rapports et KPIs gestion"]:::api
 
         H --> I
         I -- "Quart unique" --> J
         I -- "Tous les quarts" --> K
-        H -. "Connecteur gouverné" .-> L
+        H -. "Extension gouvernée" .-> L
     end
 
     C ==> D
