@@ -22,38 +22,39 @@ flowchart TD
     classDef step fill:#f4f9fc,stroke:#0073A9,stroke-width:1.5px,color:#1a1a1a;
     classDef engine fill:#eef6fa,stroke:#005b87,stroke-width:2px,stroke-dasharray: 5 5,color:#004d73,font-weight:bold;
     classDef condition fill:#fff8e6,stroke:#d9822b,stroke-width:2px,color:#5c3709,font-weight:bold;
+    classDef governance fill:#f3e8fd,stroke:#7b1fa2,stroke-width:2px,color:#4a148c,font-weight:bold;
     classDef output fill:#e6f4ea,stroke:#1e8e3e,stroke-width:2px,color:#0d652d,font-weight:bold;
+    classDef api fill:#e0f2f1,stroke:#00796b,stroke-width:2px,stroke-dasharray: 5 5,color:#004d40,font-weight:bold;
 
-    subgraph P1 ["Étape 1 : Saisie des données de présence (JOUR, SOIR, NUIT)"]
-        A["Accès aux feuilles d'entrée quotidiennes<br/>(LUNDI, MARDI, MERCREDI, etc.)"]:::step
-        B["Saisie des données de présence<br/>pour chaque quart de travail"]:::step
-        C["Enregistrement normalisé des classeurs :<br/>• JOUR-XX-XX.xlsx<br/>• SOIR-XX-XX.xlsx<br/>• NUIT-XX-XX.xlsx"]:::step
+    subgraph P1 ["Étape 1 : Extraction et normalisation des présences (SIRH / Gabarit GAR)"]
+        A["Extraction des présences effectives<br/>(Virtuo Lourd / Feuilles quotidiennes)"]:::step
+        B["Saisie opérationnelle par quart<br/>(JOUR, SOIR, NUIT)"]:::step
+        C["Enregistrement normalisé des classeurs :<br/>• JOUR-06-09.xlsx<br/>• SOIR-05-08.xlsx<br/>• NUIT-06-09.xlsx"]:::step
         A --> B --> C
     end
 
-    subgraph P2 ["Étape 2 : Importation et traitement réactif (Configuration du rapport)"]
+    subgraph P2 ["Étape 2 : Ingestion et moteur déterministe (Mémoire volatile / Zéro persistance)"]
         D["Ouverture de l'interface web<br/>Sparce AI — Module GAR"]:::step
-        E["Clic sur « Importer » et chargement<br/>du ou des fichier(s) .xlsx (J-S-N)"]:::step
-        F["Paramétrage via le « Sélecteur de date(s) »<br/>(Période visée)"]:::step
-        G["Paramétrage via le « Sélecteur de quart »<br/>(JOUR / SOIR / NUIT / Tous les quarts)"]:::step
-        H[["⚙️ Calcul automatique et instantané :<br/>Traitement Présences vs Cibles"]]:::engine
+        E["Importation multi-fichiers .xlsx<br/>(Detected Format : Excel Workforce Workbook)"]:::step
+        F["Sélection de la période via calendrier interactif<br/>(ex. : 05/11/2026 – 09/11/2026 → Ok ✅)"]:::step
+        G["Paramétrage du « Sélecteur de quart »<br/>(JOUR / SOIR / NUIT / Tous les quarts)"]:::step
+        H[["⚙️ Moteur de conciliation déterministe (RAM uniquement) :<br/>Présences réelles vs Cibles de ratios départementaux"]]:::engine
         
         D --> E --> F --> G --> H
-        F -.->|Mise à jour réactive| H
+        F -.->|Filtrage temporel réactif| H
     end
 
-    subgraph P3 ["Étape 3 : Interrogation, Conseil et Exportation des Livrables"]
-        I["Volet d'analyse / Invite de commande :<br/>Requêtes ciblées (écarts d'effectifs, points de friction)"]:::step
-        J["Clic sur « Generate Personalized Workforce Report »<br/>(Moteur d'optimisation, arbitrage et affectation)"]:::output
-        K{"Valeur choisie dans le<br/>« Sélecteur de quart » ?"}:::condition
-        L["Affichage du rapport spécifique<br/>au quart sélectionné (JOUR, SOIR ou NUIT)"]:::output
-        M["Déverrouillage et visibilité du bouton :<br/>📥 Télécharger « Topo 24h – global »"]:::output
+    subgraph P3 ["Étape 3 : Audit visuel (Human-in-the-Loop), Exportation et Extension API"]
+        I["🛡️ Contrôle de conformité obligatoire (Human-in-the-Loop) :<br/>Validation visuelle des écarts nets par l'agent administratif"]:::governance
+        J{"Portée choisie dans le<br/>« Sélecteur de quart » ?"}:::condition
+        K["Affichage ciblé des écarts<br/>pour le quart unique (JOUR, SOIR ou NUIT)"]:::output
+        L["Déverrouillage et exportation directe :<br/>📥 Download Topo 24h (Synthèse Markdown multi-quarts)"]:::output
+        M[["🔌 Connect to API (Extension optionnelle / Clé API institutionnelle ex. Azure OpenAI) :<br/>Génération de rapports détaillés de gestion & extraction de statistiques / KPIs<br/>pour les gestionnaires et coordonnateurs"]]:::api
 
-        H --> I
-        H --> J
-        H --> K
-        K -- "Quart unique (Jour / Soir / Nuit)" --> L
-        K -- "« Tous les quarts » sélectionné" --> M
+        H --> I --> J
+        J -- "Quart unique (Jour / Soir / Nuit)" --> K
+        J -- "« Tous les quarts » sélectionné" --> L
+        I -. "Connecteur gouverné (Prêt pour tenant DRTI)" .-> M
     end
 
     C ==> D
